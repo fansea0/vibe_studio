@@ -16,7 +16,7 @@ export function useCommitPolling(productId: string | null | undefined, limit = 5
       const controller = new AbortController(); requestRef.current = controller
       setState((previous) => ({ ...previous, loading: previous.commits.length === 0, error: '' }))
       try { const response = await fetchCommits(productId, controller.signal, limit); if (!disposed) setState({ commits: response.items, loading: false, error: '', checkedAt: response.checkedAt }) }
-      catch (error) { if (!disposed && !(error instanceof DOMException && error.name === 'AbortError')) setState((previous) => ({ ...previous, loading: false, error: '暂时无法读取 Git 更新' })) }
+      catch (error) { if (!disposed && (error as { name?: string } | null)?.name !== 'AbortError') setState((previous) => ({ ...previous, loading: false, error: '暂时无法读取 Git 更新' })) }
       finally { runningRef.current = false }
     }
     void load(); const timer = window.setInterval(() => { void load() }, 60_000)
