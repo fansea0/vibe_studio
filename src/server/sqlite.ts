@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import type { Product, ProductVersion, WorkItem, MarkdownDocument, ProductStatus, WorkItemType, WorkItemStatus, VersionStatus, Priority } from '../domain/models'
+import type { Product, ProductVersion, WorkItem, MarkdownDocument, ProductStatus, WorkItemType, WorkItemStatus, VersionStatus, Priority } from '../domain/models.js'
 
 type Comments = Record<string, Record<string, string>>
 export const schemaComments: Comments = {
