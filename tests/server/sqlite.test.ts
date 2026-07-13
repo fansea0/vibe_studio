@@ -79,4 +79,11 @@ describe('sqlite repository', () => {
     expect(() => r.updateWorkItem(w.id, { title: '' })).toThrow(RepositoryError)
     r.close()
   })
+
+  it('enables foreign keys and maps non-unique mutation failures safely', () => {
+    const r = createSqliteRepository(':memory:')
+    expect(r.foreignKeysEnabled()).toBe(true)
+    expect(() => r.createWorkItem('999999', { type: 'bug', title: 'x', priority: 'low', dueDate: null, status: 'todo' })).toThrow(RepositoryError)
+    r.close()
+  })
 })
