@@ -148,7 +148,10 @@ const upsertChild = <T extends { id: string; productId: string }>(
   return records.map((existing, index) => (index === existingIndex ? record : existing))
 }
 
-export type RepositoryErrorCode = 'PERSISTENCE_FAILED'
+export type RepositoryErrorCode =
+  | 'PERSISTENCE_FAILED'
+  | 'VALIDATION_FAILED'
+  | 'PRODUCT_NOT_FOUND'
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode
@@ -157,6 +160,25 @@ export class RepositoryError extends Error {
     super(message, options)
     this.name = 'RepositoryError'
     this.code = code
+  }
+}
+
+const requireValid = <T>(
+  value: unknown,
+  validate: (candidate: unknown) => candidate is T,
+): T => {
+  if (!validate(value)) {
+    throw new RepositoryError('VALIDATION_FAILED', 'Studio record validation failed.')
+  }
+  return value
+}
+
+const requireProduct = (data: StudioData, productId: string): void => {
+  if (!data.products.some(({ id }) => id === productId)) {
+    throw new RepositoryError(
+      'PRODUCT_NOT_FOUND',
+      `Studio product "${productId}" does not exist.`,
+    )
   }
 }
 
@@ -197,7 +219,7 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
     lastKnownGood = cloneStudio(sanitized)
   }
 
-  const read = (): StudioData => {
+  const read = (commitSnapshot = true): StudioData => {
     let payload: string | null
     try {
       payload = storage.getItem(STORAGE_KEY)
@@ -207,8 +229,10 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
 
     if (payload === null) {
       const seeded = cloneSeed()
-      lastKnownGood = cloneStudio(seeded)
-      tryRecoveryWrite(seeded)
+      if (commitSnapshot) {
+        lastKnownGood = cloneStudio(seeded)
+        tryRecoveryWrite(seeded)
+      }
       return cloneStudio(seeded)
     }
 
@@ -217,42 +241,51 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
       parsed = JSON.parse(payload)
     } catch {
       const recovered = cloneStudio(lastKnownGood)
-      tryRecoveryWrite(recovered)
+      if (commitSnapshot) tryRecoveryWrite(recovered)
       return recovered
     }
 
     const sanitized = sanitizeStudio(parsed)
     if (sanitized === null) {
       const recovered = cloneStudio(lastKnownGood)
-      tryRecoveryWrite(recovered)
+      if (commitSnapshot) tryRecoveryWrite(recovered)
       return recovered
     }
 
-    lastKnownGood = cloneStudio(sanitized)
-    if (JSON.stringify(sanitized) !== payload) tryRecoveryWrite(sanitized)
+    if (commitSnapshot) {
+      lastKnownGood = cloneStudio(sanitized)
+      if (JSON.stringify(sanitized) !== payload) tryRecoveryWrite(sanitized)
+    }
     return cloneStudio(sanitized)
   }
 
   return {
     listProducts: () => read().products,
     saveProduct: (product) => {
-      const data = read()
-      persistMutation({ ...data, products: upsertProduct(data.products, product) })
+      const validProduct = requireValid(product, isProduct)
+      const data = read(false)
+      persistMutation({ ...data, products: upsertProduct(data.products, validProduct) })
     },
     listWorkItems: (productId) => read().workItems.filter((item) => item.productId === productId),
     saveWorkItem: (item) => {
-      const data = read()
-      persistMutation({ ...data, workItems: upsertChild(data.workItems, item) })
+      const validItem = requireValid(item, isWorkItem)
+      const data = read(false)
+      requireProduct(data, validItem.productId)
+      persistMutation({ ...data, workItems: upsertChild(data.workItems, validItem) })
     },
     listVersions: (productId) => read().versions.filter((version) => version.productId === productId),
     saveVersion: (version) => {
-      const data = read()
-      persistMutation({ ...data, versions: upsertChild(data.versions, version) })
+      const validVersion = requireValid(version, isVersion)
+      const data = read(false)
+      requireProduct(data, validVersion.productId)
+      persistMutation({ ...data, versions: upsertChild(data.versions, validVersion) })
     },
     listDocuments: (productId) => read().documents.filter((document) => document.productId === productId),
     saveDocument: (document) => {
-      const data = read()
-      persistMutation({ ...data, documents: upsertChild(data.documents, document) })
+      const validDocument = requireValid(document, isDocument)
+      const data = read(false)
+      requireProduct(data, validDocument.productId)
+      persistMutation({ ...data, documents: upsertChild(data.documents, validDocument) })
     },
     reset: () => persistMutation(emptyStudio()),
   }

@@ -58,6 +58,7 @@ class FaultyStorage implements Storage {
   readonly data = new Map<string, string>()
   failReads = false
   failWrites = false
+  writeAttempts = 0
 
   get length(): number {
     return this.data.size
@@ -81,6 +82,7 @@ class FaultyStorage implements Storage {
   }
 
   setItem(key: string, value: string): void {
+    this.writeAttempts += 1
     if (this.failWrites) throw new DOMException('Storage quota exceeded', 'QuotaExceededError')
     this.data.set(key, value)
   }
@@ -345,5 +347,82 @@ describe('createStudioRepository', () => {
     )
     storage.failReads = true
     expect(repository.listProducts()).toEqual(seedStudio.products)
+  })
+
+  it.each([
+    ['completionPercent', { completionPercent: 101 }],
+    ['userCount', { userCount: -1 }],
+  ])('rejects invalid saveProduct %s without writing or changing the snapshot', (_field, patch) => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listProducts()
+    const writesBeforeMutation = storage.writeAttempts
+    const invalidProduct = { ...seedStudio.products[0], ...patch }
+
+    expect(() => repository.saveProduct(invalidProduct)).toThrowError(
+      expect.objectContaining({ name: 'RepositoryError', code: 'VALIDATION_FAILED' }),
+    )
+    expect(storage.writeAttempts).toBe(writesBeforeMutation)
+
+    storage.failReads = true
+    expect(repository.listProducts()).toEqual(seedStudio.products)
+  })
+
+  it('rejects orphan child mutations without writing or changing the snapshot', () => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listProducts()
+    const writesBeforeMutation = storage.writeAttempts
+
+    for (const saveOrphan of [
+      () => repository.saveWorkItem(workItem('orphan', 'missing')),
+      () => repository.saveVersion(version('orphan', 'missing')),
+      () => repository.saveDocument(document('orphan', 'missing')),
+    ]) {
+      expect(saveOrphan).toThrowError(
+        expect.objectContaining({ name: 'RepositoryError', code: 'PRODUCT_NOT_FOUND' }),
+      )
+      expect(storage.writeAttempts).toBe(writesBeforeMutation)
+    }
+
+    storage.failReads = true
+    expect(repository.listProducts()).toEqual(seedStudio.products)
+    expect(repository.listWorkItems('missing')).toEqual([])
+  })
+
+  it('does not replace the snapshot from external storage when an orphan mutation fails', () => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listProducts()
+    repository.saveProduct(product)
+    const expectedSnapshot = repository.listProducts()
+    storage.data.set(STORAGE_KEY, JSON.stringify(seedStudio))
+    const writesBeforeMutation = storage.writeAttempts
+
+    expect(() => repository.saveWorkItem(workItem('orphan', 'missing'))).toThrowError(
+      expect.objectContaining({ code: 'PRODUCT_NOT_FOUND' }),
+    )
+    expect(storage.writeAttempts).toBe(writesBeforeMutation)
+
+    storage.failReads = true
+    expect(repository.listProducts()).toEqual(expectedSnapshot)
+  })
+
+  it('persists valid upserts after rejecting an invalid mutation', () => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listProducts()
+
+    expect(() =>
+      repository.saveProduct({ ...product, completionPercent: 101 }),
+    ).toThrowError(expect.objectContaining({ code: 'VALIDATION_FAILED' }))
+
+    repository.saveProduct(product)
+    repository.saveWorkItem(workItem('valid-after-rejection', product.id))
+
+    expect(repository.listProducts()).toContainEqual(product)
+    expect(repository.listWorkItems(product.id)).toContainEqual(
+      workItem('valid-after-rejection', product.id),
+    )
   })
 })
