@@ -180,6 +180,89 @@ describe('product workspace', () => {
     expect(await screen.findByRole('link', { name: /Flora Cross Tab，打开产品详情/ })).toBeInTheDocument()
   })
 
+  it('restores a legacy archived product into a valid developing lifecycle', async () => {
+    const repository = createStudioRepository(localStorage)
+    const flora = repository.listProducts().find(({ id }) => id === 'flora')!
+    repository.saveProduct({ ...flora, status: 'archived', archivedAt: new Date().toISOString() })
+    const user = userEvent.setup()
+    renderApp('/products', repository)
+
+    await user.click(screen.getByRole('button', { name: '查看已归档产品' }))
+    await user.click(screen.getByRole('button', { name: '恢复 Flora' }))
+
+    expect(repository.listProducts().find(({ id }) => id === 'flora')).toMatchObject({
+      status: 'developing',
+      archivedAt: null,
+    })
+    expect(within(screen.getByRole('region', { name: '活跃产品' })).getByRole('link', { name: /Flora/ })).toBeInTheDocument()
+  })
+
+  it('migrates a legacy active archived status when loading the App boundary', () => {
+    const repository = createStudioRepository(localStorage)
+    const flora = repository.listProducts().find(({ id }) => id === 'flora')!
+    repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
+
+    renderApp('/products', repository)
+
+    expect(repository.listProducts().find(({ id }) => id === 'flora')).toMatchObject({
+      status: 'developing',
+      archivedAt: null,
+    })
+    expect(screen.getByRole('link', { name: /Flora，打开产品详情/ })).toBeInTheDocument()
+  })
+
+  it('keeps a safe view and reports a failed legacy migration', () => {
+    const repository = createStudioRepository(localStorage)
+    const flora = repository.listProducts().find(({ id }) => id === 'flora')!
+    repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
+    const failingRepository = {
+      ...repository,
+      saveProduct: () => {
+        throw new RepositoryError('PERSISTENCE_FAILED', 'migration failed')
+      },
+    }
+
+    renderApp('/products', failingRepository)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('旧版产品数据迁移失败')
+    expect(within(screen.getByRole('link', { name: /Flora，打开产品详情/ })).getByText('开发中')).toBeInTheDocument()
+  })
+
+  it('preserves a settings draft when another product changes externally', async () => {
+    const repository = createStudioRepository(localStorage)
+    const user = userEvent.setup()
+    renderApp('/products/flora/settings', repository)
+    const name = screen.getByLabelText('产品名称')
+    await user.clear(name)
+    await user.type(name, 'Flora Draft')
+    const resume = repository.listProducts().find(({ id }) => id === 'resume-genius')!
+
+    repository.saveProduct({ ...resume, name: 'Resume External', updatedAt: new Date().toISOString() })
+    window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
+
+    expect(await screen.findByRole('link', { name: /Resume External/ })).toBeInTheDocument()
+    expect(name).toHaveValue('Flora Draft')
+    expect(screen.queryByText(/当前产品已在其他窗口更新/)).not.toBeInTheDocument()
+  })
+
+  it('preserves a dirty draft and offers the current product external version', async () => {
+    const repository = createStudioRepository(localStorage)
+    const user = userEvent.setup()
+    renderApp('/products/flora/settings', repository)
+    const name = screen.getByLabelText('产品名称')
+    await user.clear(name)
+    await user.type(name, 'Flora Draft')
+    const flora = repository.listProducts().find(({ id }) => id === 'flora')!
+
+    repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T09:00:00.000Z' })
+    window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
+
+    expect(name).toHaveValue('Flora Draft')
+    expect(await screen.findByRole('alert')).toHaveTextContent('当前产品已在其他窗口更新')
+    await user.click(screen.getByRole('button', { name: '加载外部版本' }))
+    expect(name).toHaveValue('Flora External')
+  })
+
   it('traps focus in the create dialog, closes on Escape, and restores trigger focus', async () => {
     const user = userEvent.setup()
     renderApp()

@@ -5,37 +5,60 @@ import type { Product, ProductVersion, WorkItem } from '../domain/models'
 import { AppShell } from './AppShell'
 import { ProductDetail } from './ProductDetail'
 import { ProductGrid } from './ProductGrid'
+import { normalizeProductLifecycle } from './productLifecycle'
 
 interface AppProps { repository?: StudioRepository; initialEntries?: string[] }
 interface StudioSnapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[] }
+interface StudioState { snapshot: StudioSnapshot; migrationError: string }
 
-const readStudioSnapshot = (repository: StudioRepository): StudioSnapshot => {
-  const products = repository.listProducts()
+const readStudioState = (repository: StudioRepository): StudioState => {
+  const storedProducts = repository.listProducts()
+  let migrationError = ''
+  const products = storedProducts.map((product) => {
+    const normalized = normalizeProductLifecycle(product)
+    if (normalized !== product) {
+      try {
+        repository.saveProduct(normalized)
+      } catch {
+        migrationError = '旧版产品数据迁移失败，当前已使用安全视图。'
+      }
+    }
+    return normalized
+  })
   return {
-    products,
-    workItems: products.flatMap(({ id }) => repository.listWorkItems(id)),
-    versions: products.flatMap(({ id }) => repository.listVersions(id)),
+    snapshot: {
+      products,
+      workItems: products.flatMap(({ id }) => repository.listWorkItems(id)),
+      versions: products.flatMap(({ id }) => repository.listVersions(id)),
+    },
+    migrationError,
   }
 }
 
 export default function App({ repository: injectedRepository, initialEntries }: AppProps) {
   const [repository] = useState(() => injectedRepository ?? createStudioRepository(localStorage))
-  const [snapshot, setSnapshot] = useState(() => readStudioSnapshot(repository))
+  const [studioState, setStudioState] = useState(() => readStudioState(repository))
+  const { snapshot, migrationError } = studioState
   const saveProduct = useCallback((product: Product) => {
     repository.saveProduct(product)
-    setSnapshot(readStudioSnapshot(repository))
+    setStudioState(readStudioState(repository))
   }, [repository])
   const archiveProduct = useCallback((product: Product) => {
     const now = new Date().toISOString()
     saveProduct({ ...product, archivedAt: now, updatedAt: now })
   }, [saveProduct])
   const restoreProduct = useCallback((product: Product) => {
-    saveProduct({ ...product, archivedAt: null, updatedAt: new Date().toISOString() })
+    const restored = normalizeProductLifecycle({
+      ...product,
+      archivedAt: null,
+      updatedAt: new Date().toISOString(),
+    }, true)
+    saveProduct(restored)
   }, [saveProduct])
   useEffect(() => {
     const refreshFromStorage = (event: StorageEvent) => {
       if (event.key === null || event.key === STUDIO_STORAGE_KEY) {
-        setSnapshot(readStudioSnapshot(repository))
+        setStudioState(readStudioState(repository))
       }
     }
     window.addEventListener('storage', refreshFromStorage)
@@ -47,15 +70,15 @@ export default function App({ repository: injectedRepository, initialEntries }: 
     <Router {...(initialEntries ? { initialEntries } : {})}>
       <Routes>
         <Route path="/" element={<Navigate to="/products" replace />} />
-        <Route path="/products" element={<Workspace products={snapshot.products}><ProductGrid {...snapshot} onSaveProduct={saveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
-        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products}><ProductDetail {...snapshot} onSaveProduct={saveProduct} onArchiveProduct={archiveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
+        <Route path="/products" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductGrid {...snapshot} onSaveProduct={saveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
+        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductDetail {...snapshot} onSaveProduct={saveProduct} onArchiveProduct={archiveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
         <Route path="*" element={<Navigate to="/products" replace />} />
       </Routes>
     </Router>
   )
 }
 
-function Workspace({ products, children }: { products: ReturnType<StudioRepository['listProducts']>; children: React.ReactNode }) {
+function Workspace({ products, migrationError, children }: { products: ReturnType<StudioRepository['listProducts']>; migrationError: string; children: React.ReactNode }) {
   const { productId } = useParams()
-  return <AppShell products={products} currentProductId={productId}>{children}</AppShell>
+  return <AppShell products={products} currentProductId={productId}>{migrationError && <p role="alert" className="feedback error boundary-feedback">{migrationError}</p>}{children}</AppShell>
 }
