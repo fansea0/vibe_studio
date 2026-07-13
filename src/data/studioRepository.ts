@@ -1,4 +1,5 @@
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
+import { normalizeDocumentName, validateDocumentName } from '../domain/documentName'
 import { seedStudio, type StudioData } from './seedStudio'
 
 export const STUDIO_STORAGE_KEY = 'vibe-studio:v1'
@@ -105,17 +106,12 @@ const isVersion = (value: unknown): value is ProductVersion =>
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)
 
-const hasMarkdownExtension = (name: string): boolean => /\.(?:md|markdown)$/i.test(name)
-const normalizedDocumentName = (name: string): string => name.trim().toLocaleLowerCase()
-
 const isDocument = (value: unknown): value is MarkdownDocument =>
   isRecord(value) &&
   isString(value.id) &&
   isString(value.productId) &&
   isString(value.name) &&
-  value.name.length > 0 &&
-  value.name === value.name.trim() &&
-  hasMarkdownExtension(value.name) &&
+  validateDocumentName(value.name).valid &&
   isString(value.content) &&
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)
@@ -126,22 +122,26 @@ const validRecords = <T>(value: unknown, validate: (record: unknown) => record i
 }
 
 const uniqueDocuments = (documents: MarkdownDocument[]): MarkdownDocument[] => {
-  const latestByProduct = new Map<string, Map<string, MarkdownDocument>>()
-  for (const document of documents) {
-    let latestByName = latestByProduct.get(document.productId)
-    if (!latestByName) {
-      latestByName = new Map<string, MarkdownDocument>()
-      latestByProduct.set(document.productId, latestByName)
-    }
-    const name = normalizedDocumentName(document.name)
-    const current = latestByName.get(name)
-    if (!current || Date.parse(document.updatedAt) > Date.parse(current.updatedAt)) {
-      latestByName.set(name, document)
-    }
+  const retained = new Set<MarkdownDocument>()
+  const seenIds = new Map<string, Set<string>>()
+  const seenNames = new Map<string, Set<string>>()
+  const ranked = documents
+    .map((document, index) => ({ document, index }))
+    .sort((left, right) =>
+      Date.parse(right.document.updatedAt) - Date.parse(left.document.updatedAt) ||
+      left.index - right.index,
+    )
+  for (const { document } of ranked) {
+    const productIds = seenIds.get(document.productId) ?? new Set<string>()
+    const productNames = seenNames.get(document.productId) ?? new Set<string>()
+    const name = normalizeDocumentName(document.name)
+    if (productIds.has(document.id) || productNames.has(name)) continue
+    productIds.add(document.id)
+    productNames.add(name)
+    seenIds.set(document.productId, productIds)
+    seenNames.set(document.productId, productNames)
+    retained.add(document)
   }
-  const retained = new Set(
-    [...latestByProduct.values()].flatMap((documentsByName) => [...documentsByName.values()]),
-  )
   return documents.filter((document) => retained.has(document))
 }
 
@@ -188,6 +188,7 @@ export type RepositoryErrorCode =
   | 'PRODUCT_NOT_FOUND'
   | 'DUPLICATE_VERSION'
   | 'DUPLICATE_DOCUMENT'
+  | 'DOCUMENT_CONFLICT'
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode
@@ -219,6 +220,7 @@ const requireProduct = (data: StudioData, productId: string): void => {
 }
 
 export interface StudioRepository {
+  readSnapshot(): StudioData
   listProducts(): Product[]
   saveProduct(product: Product): void
   listWorkItems(productId: string): WorkItem[]
@@ -226,11 +228,29 @@ export interface StudioRepository {
   listVersions(productId: string): ProductVersion[]
   saveVersion(version: ProductVersion): void
   listDocuments(productId: string): MarkdownDocument[]
-  saveDocument(document: MarkdownDocument): void
+  saveDocument(document: MarkdownDocument, expectedUpdatedAt?: string): Promise<void>
   reset(): void
 }
 
-export const createStudioRepository = (storage: Storage): StudioRepository => {
+export interface DocumentLock {
+  request<T>(operation: () => Promise<T> | T): Promise<T>
+}
+
+const storageDocumentQueues = new WeakMap<Storage, Promise<void>>()
+
+const createStorageDocumentLock = (storage: Storage): DocumentLock => ({
+  request: <T,>(operation: () => Promise<T> | T): Promise<T> => {
+    const previous = storageDocumentQueues.get(storage) ?? Promise.resolve()
+    const result = previous.catch(() => undefined).then(operation)
+    storageDocumentQueues.set(storage, result.then(() => undefined, () => undefined))
+    return result
+  },
+})
+
+export const createStudioRepository = (
+  storage: Storage,
+  documentLock: DocumentLock = createStorageDocumentLock(storage),
+): StudioRepository => {
   let lastKnownGood = cloneSeed()
 
   const tryRecoveryWrite = (data: StudioData): void => {
@@ -296,6 +316,7 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
   }
 
   return {
+    readSnapshot: () => read(),
     listProducts: () => read().products,
     saveProduct: (product) => {
       const validProduct = requireValid(product, isProduct)
@@ -328,19 +349,34 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
       persistMutation({ ...data, versions: upsertChild(data.versions, validVersion) })
     },
     listDocuments: (productId) => read().documents.filter((document) => document.productId === productId),
-    saveDocument: (document) => {
-      const normalizedDocument = {
-        ...document,
-        name: isString(document.name) ? document.name.trim() : document.name,
-      }
-      const validDocument = requireValid(normalizedDocument, isDocument)
+    saveDocument: (document, expectedUpdatedAt) => documentLock.request(() => {
+      const nameValidation = isString(document.name)
+        ? validateDocumentName(document.name)
+        : { valid: false as const }
       const data = read(false)
-      requireProduct(data, validDocument.productId)
-      const normalizedName = normalizedDocumentName(validDocument.name)
+      requireProduct(data, document.productId)
+      const stored = data.documents.find(
+        (candidate) => candidate.productId === document.productId && candidate.id === document.id,
+      )
+      if (expectedUpdatedAt !== undefined && stored?.updatedAt !== expectedUpdatedAt) {
+        throw new RepositoryError('DOCUMENT_CONFLICT', 'Document changed since it was loaded.')
+      }
+      const now = new Date().toISOString()
+      const timestamp = stored
+        ? new Date(Math.max(Date.now(), Date.parse(stored.updatedAt) + 1)).toISOString()
+        : now
+      const candidate = {
+        ...document,
+        name: nameValidation.valid ? nameValidation.name : document.name,
+        createdAt: stored?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+      }
+      const validDocument = requireValid(candidate, isDocument)
+      const normalizedName = normalizeDocumentName(validDocument.name)
       const duplicate = data.documents.some((storedDocument) =>
         storedDocument.productId === validDocument.productId &&
         storedDocument.id !== validDocument.id &&
-        normalizedDocumentName(storedDocument.name) === normalizedName,
+        normalizeDocumentName(storedDocument.name) === normalizedName,
       )
       if (duplicate) {
         throw new RepositoryError(
@@ -349,7 +385,7 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
         )
       }
       persistMutation({ ...data, documents: upsertChild(data.documents, validDocument) })
-    },
+    }),
     reset: () => persistMutation(emptyStudio()),
   }
 }

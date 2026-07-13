@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
-import { createStudioRepository, STUDIO_STORAGE_KEY, type StudioRepository } from '../data/studioRepository'
+import { createStudioRepository, STUDIO_STORAGE_KEY, type DocumentLock, type StudioRepository } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import { AppShell } from './AppShell'
 import { ProductDetail } from './ProductDetail'
@@ -12,7 +12,8 @@ interface StudioSnapshot { products: Product[]; workItems: WorkItem[]; versions:
 interface StudioState { snapshot: StudioSnapshot; migrationError: string }
 
 const readStudioState = (repository: StudioRepository): StudioState => {
-  const storedProducts = repository.listProducts()
+  const stored = repository.readSnapshot()
+  const storedProducts = stored.products
   let migrationError = ''
   const products = storedProducts.map((product) => {
     const normalized = normalizeProductLifecycle(product)
@@ -28,16 +29,22 @@ const readStudioState = (repository: StudioRepository): StudioState => {
   return {
     snapshot: {
       products,
-      workItems: products.flatMap(({ id }) => repository.listWorkItems(id)),
-      versions: products.flatMap(({ id }) => repository.listVersions(id)),
-      documents: products.flatMap(({ id }) => repository.listDocuments(id)),
+      workItems: stored.workItems,
+      versions: stored.versions,
+      documents: stored.documents,
     },
     migrationError,
   }
 }
 
 export default function App({ repository: injectedRepository, initialEntries }: AppProps) {
-  const [repository] = useState(() => injectedRepository ?? createStudioRepository(localStorage))
+  const [repository] = useState(() => {
+    if (injectedRepository) return injectedRepository
+    const browserLock: DocumentLock | undefined = navigator.locks
+      ? { request: (operation) => navigator.locks.request('vibe-studio:documents', operation) }
+      : undefined
+    return createStudioRepository(localStorage, browserLock)
+  })
   const [studioState, setStudioState] = useState(() => readStudioState(repository))
   const { snapshot, migrationError } = studioState
   const saveProduct = useCallback((product: Product) => {
@@ -52,9 +59,9 @@ export default function App({ repository: injectedRepository, initialEntries }: 
     repository.saveVersion(version)
     setStudioState(readStudioState(repository))
   }, [repository])
-  const saveDocument = useCallback((document: MarkdownDocument) => {
+  const saveDocument = useCallback(async (document: MarkdownDocument, expectedUpdatedAt?: string) => {
     try {
-      repository.saveDocument(document)
+      await repository.saveDocument(document, expectedUpdatedAt)
     } catch (error) {
       setStudioState(readStudioState(repository))
       throw error

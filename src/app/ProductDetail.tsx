@@ -17,7 +17,7 @@ interface ProductDetailProps {
   onSaveProduct: (product: Product) => void
   onSaveWorkItem: (item: WorkItem) => void
   onSaveVersion: (version: ProductVersion) => void
-  onSaveDocument: (document: MarkdownDocument) => void
+  onSaveDocument: (document: MarkdownDocument, expectedUpdatedAt?: string) => Promise<void>
   onArchiveProduct: (product: Product) => void
   onRestoreProduct: (product: Product) => void
 }

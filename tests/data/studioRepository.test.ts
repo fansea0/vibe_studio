@@ -103,29 +103,29 @@ describe('createStudioRepository', () => {
     expect(repository.listProducts()).toContainEqual(product)
   })
 
-  it('isolates every child record collection by productId', () => {
+  it('isolates every child record collection by productId', async () => {
     const repository = createStudioRepository(localStorage)
     repository.saveWorkItem(workItem('item-a', 'flora'))
     repository.saveWorkItem(workItem('item-b', 'resume-genius'))
     repository.saveVersion(version('version-a', 'flora'))
     repository.saveVersion(version('version-b', 'resume-genius'))
-    repository.saveDocument(document('document-a', 'flora'))
-    repository.saveDocument(document('document-b', 'resume-genius'))
+    await repository.saveDocument(document('document-a', 'flora'))
+    await repository.saveDocument(document('document-b', 'resume-genius'))
 
     expect(repository.listWorkItems('flora').map(({ id }) => id)).toContain('item-a')
     expect(repository.listVersions('flora').map(({ id }) => id)).toContain('version-a')
     expect(repository.listDocuments('flora').map(({ id }) => id)).toContain('document-a')
   })
 
-  it('keeps child records with the same id when their productId differs', () => {
+  it('keeps child records with the same id when their productId differs', async () => {
     const repository = createStudioRepository(localStorage)
 
     repository.saveWorkItem(workItem('shared', 'flora'))
     repository.saveWorkItem(workItem('shared', 'resume-genius'))
     repository.saveVersion(version('shared', 'flora'))
     repository.saveVersion(version('shared', 'resume-genius'))
-    repository.saveDocument(document('shared', 'flora'))
-    repository.saveDocument(document('shared', 'resume-genius'))
+    await repository.saveDocument(document('shared', 'flora'))
+    await repository.saveDocument(document('shared', 'resume-genius'))
 
     expect(repository.listWorkItems('flora')).toContainEqual(workItem('shared', 'flora'))
     expect(repository.listWorkItems('resume-genius')).toContainEqual(
@@ -135,10 +135,8 @@ describe('createStudioRepository', () => {
     expect(repository.listVersions('resume-genius')).toContainEqual(
       version('shared', 'resume-genius'),
     )
-    expect(repository.listDocuments('flora')).toContainEqual(document('shared', 'flora'))
-    expect(repository.listDocuments('resume-genius')).toContainEqual(
-      document('shared', 'resume-genius'),
-    )
+    expect(repository.listDocuments('flora')).toContainEqual(expect.objectContaining({ id: 'shared' }))
+    expect(repository.listDocuments('resume-genius')).toContainEqual(expect.objectContaining({ id: 'shared' }))
   })
 
   it('updates records with the same id instead of appending duplicates', () => {
@@ -240,19 +238,19 @@ describe('createStudioRepository', () => {
     ['empty name', { name: '' }],
     ['non-string name', { name: null }],
     ['non-string content', { content: null }],
-  ])('rejects invalid saveDocument data: %s', (_case, patch) => {
+  ])('rejects invalid saveDocument data: %s', async (_case, patch) => {
     const storage = new FaultyStorage()
     const repository = createStudioRepository(storage)
     repository.listDocuments('flora')
     const writesBeforeMutation = storage.writeAttempts
 
-    expect(() => repository.saveDocument({
+    await expect(repository.saveDocument({
       ...document('invalid', 'flora'),
       ...patch,
-    } as MarkdownDocument)).toThrowError(expect.objectContaining({
+    } as MarkdownDocument)).rejects.toMatchObject({
       name: 'RepositoryError',
       code: 'VALIDATION_FAILED',
-    }))
+    })
     expect(storage.writeAttempts).toBe(writesBeforeMutation)
   })
 
@@ -277,67 +275,67 @@ describe('createStudioRepository', () => {
     expect(repository.listProducts()).toEqual([product])
   })
 
-  it('rejects a case-insensitive duplicate document name from the latest storage snapshot', () => {
+  it('rejects a case-insensitive duplicate document name from the latest storage snapshot', async () => {
     const firstRepository = createStudioRepository(localStorage)
     const staleRepository = createStudioRepository(localStorage)
     firstRepository.listDocuments('flora')
     staleRepository.listDocuments('flora')
 
-    firstRepository.saveDocument({ ...document('first-guide', 'flora'), name: 'guide.md' })
+    await firstRepository.saveDocument({ ...document('first-guide', 'flora'), name: 'guide.md' })
 
-    expect(() => staleRepository.saveDocument({
+    await expect(staleRepository.saveDocument({
       ...document('stale-guide', 'flora'),
       name: ' GUIDE.MD ',
-    })).toThrowError(expect.objectContaining({
+    })).rejects.toMatchObject({
       name: 'RepositoryError',
       code: 'DUPLICATE_DOCUMENT',
       message: expect.stringContaining('GUIDE.MD'),
-    }))
+    })
     expect(firstRepository.listDocuments('flora').filter(
       ({ name }) => name.toLocaleLowerCase() === 'guide.md',
     )).toHaveLength(1)
   })
 
-  it('rejects a stale duplicate copy name', () => {
+  it('rejects a stale duplicate copy name', async () => {
     const firstRepository = createStudioRepository(localStorage)
     const staleRepository = createStudioRepository(localStorage)
 
-    firstRepository.saveDocument({
+    await firstRepository.saveDocument({
       ...document('first-copy', 'flora'),
       name: 'guide-副本.md',
     })
 
-    expect(() => staleRepository.saveDocument({
+    await expect(staleRepository.saveDocument({
       ...document('stale-copy', 'flora'),
       name: 'GUIDE-副本.md',
-    })).toThrowError(expect.objectContaining({ code: 'DUPLICATE_DOCUMENT' }))
+    })).rejects.toMatchObject({ code: 'DUPLICATE_DOCUMENT' })
   })
 
-  it('allows overwriting the same document id without treating its name as a duplicate', () => {
+  it('allows overwriting the same document id without treating its name as a duplicate', async () => {
     const repository = createStudioRepository(localStorage)
     const original = { ...document('same-document', 'flora'), name: 'guide.md' }
-    repository.saveDocument(original)
+    await repository.saveDocument(original)
 
-    expect(() => repository.saveDocument({
+    await expect(repository.saveDocument({
       ...original,
       name: ' GUIDE.MD ',
       content: '# Updated',
       updatedAt: '2026-07-02T00:00:00.000Z',
-    })).not.toThrow()
+    })).resolves.toBeUndefined()
     expect(repository.listDocuments('flora').filter(({ id }) => id === original.id)).toEqual([
       expect.objectContaining({ name: 'GUIDE.MD', content: '# Updated' }),
     ])
   })
 
-  it('allows the same normalized document name in different products', () => {
+  it('allows the same normalized document name in different products', async () => {
     const repository = createStudioRepository(localStorage)
 
-    repository.saveDocument({ ...document('flora-guide', 'flora'), name: 'guide.md' })
+    await repository.saveDocument({ ...document('flora-guide', 'flora'), name: 'guide.md' })
 
-    expect(() => repository.saveDocument({
+    await expect(repository.saveDocument({
       ...document('resume-guide', 'resume-genius'),
       name: ' GUIDE.MD ',
-    })).not.toThrow()
+    })).resolves.toBeUndefined()
     expect(repository.listDocuments('flora')).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'guide.md' }),
     ]))
@@ -378,6 +376,26 @@ describe('createStudioRepository', () => {
       crossProduct,
       latest,
     ])
+  })
+
+  it('salvages duplicate document ids per product by keeping the actual latest update', () => {
+    const older = { ...document('shared-id', product.id), name: 'older.md', updatedAt: '2026-07-02T00:30:00+14:00' }
+    const latest = { ...document('shared-id', product.id), name: 'latest.md', updatedAt: '2026-07-01T23:00:00.000Z' }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      products: [product], workItems: [], versions: [], documents: [older, latest],
+    }))
+
+    const repository = createStudioRepository(localStorage)
+
+    expect(repository.listDocuments(product.id)).toEqual([latest])
+  })
+
+  it('returns a deep-cloned validated snapshot', () => {
+    const repository = createStudioRepository(localStorage)
+    const first = repository.readSnapshot()
+    first.products[0]!.name = 'Mutated outside repository'
+
+    expect(repository.readSnapshot().products[0]!.name).not.toBe('Mutated outside repository')
   })
 
   it('does not collide product ids and document names containing colons during salvage', () => {
@@ -535,7 +553,7 @@ describe('createStudioRepository', () => {
     expect(repository.listProducts()).toEqual(seedStudio.products)
   })
 
-  it('rejects orphan child mutations without writing or changing the snapshot', () => {
+  it('rejects orphan child mutations without writing or changing the snapshot', async () => {
     const storage = new FaultyStorage()
     const repository = createStudioRepository(storage)
     repository.listProducts()
@@ -544,13 +562,16 @@ describe('createStudioRepository', () => {
     for (const saveOrphan of [
       () => repository.saveWorkItem(workItem('orphan', 'missing')),
       () => repository.saveVersion(version('orphan', 'missing')),
-      () => repository.saveDocument(document('orphan', 'missing')),
     ]) {
       expect(saveOrphan).toThrowError(
         expect.objectContaining({ name: 'RepositoryError', code: 'PRODUCT_NOT_FOUND' }),
       )
       expect(storage.writeAttempts).toBe(writesBeforeMutation)
     }
+    await expect(repository.saveDocument(document('orphan', 'missing'))).rejects.toMatchObject({
+      name: 'RepositoryError', code: 'PRODUCT_NOT_FOUND',
+    })
+    expect(storage.writeAttempts).toBe(writesBeforeMutation)
 
     storage.failReads = true
     expect(repository.listProducts()).toEqual(seedStudio.products)

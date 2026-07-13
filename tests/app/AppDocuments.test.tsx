@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -101,7 +101,8 @@ describe('Markdown document workspace', () => {
   it('overwrites a same-name document while retaining identity and creation time', async () => {
     const repository = createStudioRepository(localStorage)
     const existing = storedDocument()
-    repository.saveDocument(existing)
+    await repository.saveDocument(existing)
+    const storedCreatedAt = repository.listDocuments('flora').find(({ id }) => id === existing.id)!.createdAt
     const user = userEvent.setup()
     renderDocuments(repository)
 
@@ -112,7 +113,7 @@ describe('Markdown document workspace', () => {
     expect(repository.listDocuments('flora').filter(({ id }) => id === existing.id)).toEqual([
       expect.objectContaining({
         id: existing.id,
-        createdAt: existing.createdAt,
+        createdAt: storedCreatedAt,
         name: existing.name,
         content: '# Updated',
       }),
@@ -123,8 +124,8 @@ describe('Markdown document workspace', () => {
 
   it('saves same-name uploads as readable, incrementing copies', async () => {
     const repository = createStudioRepository(localStorage)
-    repository.saveDocument(storedDocument())
-    repository.saveDocument(storedDocument({ id: 'copy-one', name: 'guide-副本.md' }))
+    await repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument({ id: 'copy-one', name: 'guide-副本.md' }))
     const user = userEvent.setup()
     renderDocuments(repository)
 
@@ -139,7 +140,7 @@ describe('Markdown document workspace', () => {
 
   it('cancels a same-name upload without changing stored documents', async () => {
     const repository = createStudioRepository(localStorage)
-    repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument())
     const before = repository.listDocuments('flora')
     const user = userEvent.setup()
     renderDocuments(repository)
@@ -154,7 +155,7 @@ describe('Markdown document workspace', () => {
 
   it('reports file read failures and retains the existing document', async () => {
     const repository = createStudioRepository(localStorage)
-    repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument())
     const before = repository.listDocuments('flora')
     const failedFile = markdownFile('broken.md', '', async () => { throw new Error('read failed') })
     const user = userEvent.setup()
@@ -169,11 +170,11 @@ describe('Markdown document workspace', () => {
 
   it('reports repository failures and retains the existing document and preview', async () => {
     const repository = createStudioRepository(localStorage)
-    repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument())
     const before = repository.listDocuments('flora')
     const failingRepository = {
       ...repository,
-      saveDocument: () => { throw new RepositoryError('PERSISTENCE_FAILED', 'quota exceeded') },
+      saveDocument: async () => { throw new RepositoryError('PERSISTENCE_FAILED', 'quota exceeded') },
     }
     const user = userEvent.setup()
     renderDocuments(failingRepository)
@@ -187,11 +188,11 @@ describe('Markdown document workspace', () => {
 
   it('keeps the conflict dialog open with one alert when overwrite persistence fails', async () => {
     const repository = createStudioRepository(localStorage)
-    repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument())
     const before = repository.listDocuments('flora')
     const failingRepository = {
       ...repository,
-      saveDocument: () => { throw new RepositoryError('PERSISTENCE_FAILED', 'quota exceeded') },
+      saveDocument: async () => { throw new RepositoryError('PERSISTENCE_FAILED', 'quota exceeded') },
     }
     const user = userEvent.setup()
     renderDocuments(failingRepository)
@@ -211,7 +212,7 @@ describe('Markdown document workspace', () => {
     const externalRepository = createStudioRepository(localStorage)
     renderDocuments(repository)
 
-    externalRepository.saveDocument(storedDocument({
+    await externalRepository.saveDocument(storedDocument({
       id: 'external-document',
       name: 'external.md',
       content: '# External document',
@@ -263,7 +264,7 @@ describe('Markdown document workspace', () => {
 
   it('keeps pending content after a concurrent copy-name collision and recomputes the next copy', async () => {
     const setupRepository = createStudioRepository(localStorage)
-    setupRepository.saveDocument(storedDocument())
+    await setupRepository.saveDocument(storedDocument())
     const firstRepository = createStudioRepository(localStorage)
     const staleRepository = createStudioRepository(localStorage)
     const first = renderDocuments(firstRepository)
@@ -302,10 +303,33 @@ describe('Markdown document workspace', () => {
     ]))
   })
 
+  it('refreshes a stale overwrite token while preserving pending content', async () => {
+    const repository = createStudioRepository(localStorage)
+    await repository.saveDocument(storedDocument())
+    const conflictingRepository = {
+      ...repository,
+      saveDocument: async () => { throw new RepositoryError('DOCUMENT_CONFLICT', 'stale token') },
+    }
+    const user = userEvent.setup()
+    renderDocuments(conflictingRepository)
+
+    await user.upload(screen.getByLabelText('上传 Markdown 文档'), markdownFile('GUIDE.md', '# Pending'))
+    const dialog = screen.getByRole('dialog', { name: '文档名称冲突' })
+    await user.click(within(dialog).getByRole('button', { name: '覆盖现有文档' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      '文档已在其他窗口更新，请重新选择覆盖、另存或取消',
+    )
+    expect(screen.getByRole('dialog', { name: '文档名称冲突' })).toBeInTheDocument()
+    expect(repository.listDocuments('flora')).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ content: '# Pending' }),
+    ]))
+  })
+
   it('normalizes surrounding whitespace before computing a unique copy name', async () => {
     const repository = createStudioRepository(localStorage)
-    repository.saveDocument(storedDocument())
-    repository.saveDocument(storedDocument({ id: 'existing-copy', name: 'guide-副本.md' }))
+    await repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument({ id: 'existing-copy', name: 'guide-副本.md' }))
     const user = userEvent.setup()
     renderDocuments(repository)
 
@@ -320,5 +344,85 @@ describe('Markdown document workspace', () => {
     expect(repository.listDocuments('flora')).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'guide-副本-2.md', content: '# Whitespace copy' }),
     ]))
+  })
+
+  it('rejects files over 512 KiB before reading them', async () => {
+    const repository = createStudioRepository(localStorage)
+    const saveDocument = vi.spyOn(repository, 'saveDocument')
+    const file = markdownFile('large.md', 'x'.repeat(512 * 1024 + 1))
+    renderDocuments(repository)
+
+    await userEvent.setup().upload(screen.getByLabelText('上传 Markdown 文档'), file)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Markdown 文件不能超过 512 KiB')
+    expect(file.text).not.toHaveBeenCalled()
+    expect(saveDocument).not.toHaveBeenCalled()
+  })
+
+  it('lets the newest upload win when file reads finish in reverse order', async () => {
+    let resolveFirst!: (content: string) => void
+    let resolveSecond!: (content: string) => void
+    const first = markdownFile('first.md', '', () => new Promise((resolve) => { resolveFirst = resolve }))
+    const second = markdownFile('second.md', '', () => new Promise((resolve) => { resolveSecond = resolve }))
+    const repository = createStudioRepository(localStorage)
+    renderDocuments(repository)
+    const input = screen.getByLabelText('上传 Markdown 文档')
+
+    fireEvent.change(input, { target: { files: [first] } })
+    expect(input).toBeDisabled()
+    expect(input.closest('section')).toHaveAttribute('aria-busy', 'true')
+    fireEvent.change(input, { target: { files: [second] } })
+    await act(async () => { resolveSecond('# Second'); await Promise.resolve() })
+    await screen.findByRole('heading', { name: 'Second' })
+    await act(async () => { resolveFirst('# First'); await Promise.resolve() })
+
+    expect(repository.listDocuments('flora')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'second.md', content: '# Second' }),
+    ]))
+    expect(repository.listDocuments('flora')).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'first.md' }),
+    ]))
+  })
+
+  it('does not save or update state after unmount while reading a file', async () => {
+    let resolveRead!: (content: string) => void
+    const repository = createStudioRepository(localStorage)
+    const saveDocument = vi.spyOn(repository, 'saveDocument')
+    const file = markdownFile('late.md', '', () => new Promise((resolve) => { resolveRead = resolve }))
+    const view = renderDocuments(repository)
+
+    fireEvent.change(screen.getByLabelText('上传 Markdown 文档'), { target: { files: [file] } })
+    view.unmount()
+    await act(async () => { resolveRead('# Late'); await Promise.resolve() })
+
+    expect(saveDocument).not.toHaveBeenCalled()
+  })
+
+  it('blocks images and unsafe URLs while hardening external links', async () => {
+    const user = userEvent.setup()
+    const { container } = renderDocuments()
+    await user.upload(screen.getByLabelText('上传 Markdown 文档'), markdownFile(
+      'links.md',
+      '![secret](https://evil.example/image.png)\n[web](https://example.com) [mail](mailto:a@example.com) [inside](#part) [scheme](//evil.example) [script](javascript:alert(1)) [data](data:text/plain,no)',
+    ))
+
+    expect(await screen.findByText('图片已阻止：secret')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.getByRole('link', { name: 'web' })).toHaveAttribute('target', '_blank')
+    expect(screen.getByRole('link', { name: 'web' })).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.getByRole('link', { name: 'mail' })).toHaveAttribute('href', 'mailto:a@example.com')
+    expect(screen.getByRole('link', { name: 'inside' })).toHaveAttribute('href', '#part')
+    expect(screen.queryByRole('link', { name: 'scheme' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'script' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'data' })).toBeNull()
+  })
+
+  it('reads one repository snapshot for the initial App refresh', () => {
+    const repository = createStudioRepository(localStorage)
+    const readSnapshot = vi.spyOn(repository, 'readSnapshot')
+
+    renderDocuments(repository)
+
+    expect(readSnapshot).toHaveBeenCalledTimes(1)
   })
 })

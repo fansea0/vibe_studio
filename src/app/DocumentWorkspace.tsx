@@ -1,14 +1,15 @@
-import { Component, useEffect, useMemo, useState, type ChangeEvent, type ErrorInfo, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useRef, useState, type ChangeEvent, type ErrorInfo, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 
 import type { MarkdownDocument } from '../domain/models'
+import { MAX_MARKDOWN_FILE_BYTES, normalizeDocumentName, validateDocumentName } from '../domain/documentName'
 import { Modal } from './Modal'
 
 interface DocumentWorkspaceProps {
   productId: string
   documents: MarkdownDocument[]
-  onSaveDocument: (document: MarkdownDocument) => void
+  onSaveDocument: (document: MarkdownDocument, expectedUpdatedAt?: string) => Promise<void>
 }
 
 interface PendingDocument {
@@ -16,12 +17,14 @@ interface PendingDocument {
   content: string
 }
 
-const isMarkdownName = (name: string): boolean => /\.(?:md|markdown)$/i.test(name)
-const normalizedName = (name: string): string => name.trim().toLocaleLowerCase()
 const isDuplicateDocumentError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null &&
   'code' in error && error.code === 'DUPLICATE_DOCUMENT'
 const duplicateDocumentMessage = '同名文档已在其他窗口保存，请选择覆盖、另存或取消'
+const isDocumentConflictError = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null &&
+  'code' in error && error.code === 'DOCUMENT_CONFLICT'
+const documentConflictMessage = '文档已在其他窗口更新，请重新选择覆盖、另存或取消'
 
 const newestDocumentId = (documents: MarkdownDocument[]): string | null =>
   [...documents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.id ?? null
@@ -36,13 +39,15 @@ const copyName = (name: string, documents: MarkdownDocument[]): string => {
   const extensionStart = trimmedName.lastIndexOf('.')
   const base = trimmedName.slice(0, extensionStart)
   const extension = trimmedName.slice(extensionStart)
-  const existingNames = new Set(documents.map((document) => normalizedName(document.name)))
+  const existingNames = new Set(documents.map((document) => normalizeDocumentName(document.name)))
   let copyNumber = 1
-  let candidate = `${base}-副本${extension}`
+  let suffix = '-副本'
+  let candidate = `${base.slice(0, 180 - extension.length - suffix.length)}${suffix}${extension}`
 
-  while (existingNames.has(normalizedName(candidate))) {
+  while (existingNames.has(normalizeDocumentName(candidate))) {
     copyNumber += 1
-    candidate = `${base}-副本-${copyNumber}${extension}`
+    suffix = `-副本-${copyNumber}`
+    candidate = `${base.slice(0, 180 - extension.length - suffix.length)}${suffix}${extension}`
   }
   return candidate
 }
@@ -50,21 +55,37 @@ const copyName = (name: string, documents: MarkdownDocument[]): string => {
 const formatDate = (value: string): string =>
   new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value))
 
-const nextUpdatedAt = (previous: string): string =>
-  new Date(Math.max(Date.now(), Date.parse(previous) + 1)).toISOString()
+const safePreviewUrl = (url: string): string => {
+  if (url.startsWith('#')) return url
+  if (url.startsWith('//')) return ''
+  try {
+    const parsed = new URL(url)
+    return ['http:', 'https:', 'mailto:'].includes(parsed.protocol) ? url : ''
+  } catch {
+    return ''
+  }
+}
 
 export function DocumentWorkspace({ productId, documents, onSaveDocument }: DocumentWorkspaceProps) {
   const [selectedId, setSelectedId] = useState<string | null>(() => newestDocumentId(documents))
   const [pending, setPending] = useState<PendingDocument | null>(null)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const uploadGeneration = useRef(0)
+  const mounted = useRef(true)
   const orderedDocuments = useMemo(
     () => [...documents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
     [documents],
   )
   const selected = documents.find(({ id }) => id === selectedId) ?? orderedDocuments[0] ?? null
   const pendingExisting = pending
-    ? documents.find((document) => normalizedName(document.name) === normalizedName(pending.name)) ?? null
+    ? documents.find((document) => normalizeDocumentName(document.name) === normalizeDocumentName(pending.name)) ?? null
     : null
+
+  useEffect(() => () => {
+    mounted.current = false
+    uploadGeneration.current += 1
+  }, [])
 
   useEffect(() => {
     if (selectedId === null || !documents.some(({ id }) => id === selectedId)) {
@@ -72,19 +93,25 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
     }
   }, [documents, selectedId])
 
-  const save = (
+  const save = async (
     document: MarkdownDocument,
     pendingOnDuplicate?: PendingDocument,
-  ): boolean => {
+    expectedUpdatedAt?: string,
+  ): Promise<boolean> => {
     try {
-      onSaveDocument(document)
+      await onSaveDocument(document, expectedUpdatedAt)
+      if (!mounted.current) return true
       setSelectedId(document.id)
       setError('')
       return true
     } catch (saveError) {
+      if (!mounted.current) return false
       if (isDuplicateDocumentError(saveError)) {
         if (pendingOnDuplicate) setPending(pendingOnDuplicate)
         setError(duplicateDocumentMessage)
+      } else if (isDocumentConflictError(saveError)) {
+        if (pendingOnDuplicate) setPending(pendingOnDuplicate)
+        setError(documentConflictMessage)
       } else {
         setError('保存失败，请稍后重试')
       }
@@ -96,61 +123,79 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
     const input = event.currentTarget
     const file = input.files?.[0]
     if (!file) return
+    const generation = ++uploadGeneration.current
     setError('')
 
-    if (!isMarkdownName(file.name)) {
-      setError('仅支持 .md 或 .markdown 文件')
+    const nameValidation = validateDocumentName(file.name)
+    if (!nameValidation.valid) {
+      setError(/\.(?:md|markdown)$/i.test(file.name)
+        ? '文件名必须为 1–180 个字符且不能包含控制字符'
+        : '仅支持 .md 或 .markdown 文件')
+      input.value = ''
+      return
+    }
+    if (file.size > MAX_MARKDOWN_FILE_BYTES) {
+      setError('Markdown 文件不能超过 512 KiB')
       input.value = ''
       return
     }
 
+    setBusy(true)
     let content: string
     try {
       content = await file.text()
     } catch {
+      if (!mounted.current || generation !== uploadGeneration.current) return
       setError('读取文档失败，请检查文件后重试')
       input.value = ''
+      setBusy(false)
       return
     }
+    if (!mounted.current || generation !== uploadGeneration.current) return
     input.value = ''
 
     const existing = documents.find(
-      (document) => normalizedName(document.name) === normalizedName(file.name),
+      (document) => normalizeDocumentName(document.name) === normalizeDocumentName(nameValidation.name),
     )
     if (existing) {
-      setPending({ name: file.name, content })
+      setPending({ name: nameValidation.name, content })
+      setBusy(false)
       return
     }
 
     const now = new Date().toISOString()
-    save(
-      { id: createId(), productId, name: file.name, content, createdAt: now, updatedAt: now },
-      { name: file.name, content },
+    await save(
+      { id: createId(), productId, name: nameValidation.name, content, createdAt: now, updatedAt: now },
+      { name: nameValidation.name, content },
     )
+    if (mounted.current && generation === uploadGeneration.current) setBusy(false)
   }
 
-  const overwrite = () => {
+  const overwrite = async () => {
     if (!pending || !pendingExisting) return
-    const saved = save({
+    setBusy(true)
+    const saved = await save({
       ...pendingExisting,
       content: pending.content,
-      updatedAt: nextUpdatedAt(pendingExisting.updatedAt),
-    })
+    }, pending, pendingExisting.updatedAt)
     if (saved) setPending(null)
+    if (mounted.current) setBusy(false)
   }
 
-  const saveCopy = () => {
+  const saveCopy = async () => {
     if (!pending) return
+    setBusy(true)
     const now = new Date().toISOString()
-    const saved = save({
+    const saved = await save({
       id: createId(),
       productId,
       name: copyName(pending.name, documents),
       content: pending.content,
       createdAt: now,
       updatedAt: now,
-    })
+    }, pending)
     if (saved) setPending(null)
+    if (mounted.current) setBusy(false)
   }
 
   const closeConflict = () => {
@@ -159,10 +204,10 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
   }
 
   return (
-    <section className="document-stack" aria-labelledby="documents-title">
+    <section className="document-stack" aria-labelledby="documents-title" aria-busy={busy}>
       <header className="section-heading document-heading">
         <div><h2 id="documents-title">Markdown 文档</h2><p>上传并安全预览产品相关的 Markdown 文件。</p></div>
-        <label className="button-link upload-label">上传 Markdown 文档<input type="file" accept=".md,.markdown" onChange={handleUpload} /></label>
+        <label className="button-link upload-label">上传 Markdown 文档<input type="file" accept=".md,.markdown" onChange={handleUpload} disabled={busy} /></label>
       </header>
       {error && pending === null && <p role="alert" className="feedback error">{error}</p>}
       {documents.length === 0 ? (
@@ -191,7 +236,19 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
             <article className="document-preview" aria-labelledby="document-preview-title">
               <h2 id="document-preview-title">文档预览</h2>
               <PreviewBoundary key={`${selected.id}:${selected.updatedAt}`}>
-                <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{selected.content}</ReactMarkdown>
+                <ReactMarkdown
+                  rehypePlugins={[rehypeSanitize]}
+                  urlTransform={safePreviewUrl}
+                  components={{
+                    img: ({ alt }) => <span className="blocked-image">图片已阻止{alt ? `：${alt}` : ''}</span>,
+                    a: ({ href, children }) => {
+                      const safeHref = safePreviewUrl(href ?? '')
+                      if (!safeHref) return <span>{children}</span>
+                      const external = !safeHref.startsWith('#')
+                      return <a href={safeHref} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{children}</a>
+                    },
+                  }}
+                >{selected.content}</ReactMarkdown>
               </PreviewBoundary>
             </article>
           )}
@@ -202,9 +259,9 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
           <p>当前产品中已存在同名文档“{pendingExisting?.name ?? pending.name}”。请选择处理方式。</p>
           {error && <p role="alert" className="feedback error">{error}</p>}
           <div className="dialog-actions">
-            <button type="button" className="secondary" onClick={closeConflict}>取消</button>
-            <button type="button" className="secondary" onClick={saveCopy} disabled={!pendingExisting}>另存为新文档</button>
-            <button type="button" onClick={overwrite} disabled={!pendingExisting}>覆盖现有文档</button>
+            <button type="button" className="secondary" onClick={closeConflict} disabled={busy}>取消</button>
+            <button type="button" className="secondary" onClick={saveCopy} disabled={!pendingExisting || busy}>另存为新文档</button>
+            <button type="button" onClick={overwrite} disabled={!pendingExisting || busy}>覆盖现有文档</button>
           </div>
         </Modal>
       )}
