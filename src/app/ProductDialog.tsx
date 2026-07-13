@@ -29,7 +29,7 @@ export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: P
     const base: Product = {
       id: createProductId(values.name, products), name: '', description: '', productType: '', icon: '',
       status: 'developing', completionPercent: 0, userCount: 0, userCountSource: '', appUrl: null,
-      archivedAt: null, createdAt: now, updatedAt: now,
+      archivedAt: null, repositoryPath: '', createdAt: now, updatedAt: now,
     }
     const product = mergeProductValues(base, values, now)
     setBusy(true)

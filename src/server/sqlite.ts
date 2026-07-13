@@ -1,7 +1,12 @@
 import Database from 'better-sqlite3'
 import type { Product, ProductVersion, WorkItem, MarkdownDocument, ProductStatus, WorkItemType, WorkItemStatus, VersionStatus, Priority } from '../domain/models'
 
-export const schemaComments = { products: '产品字段', work_items: '工作项字段', versions: '版本字段', documents: '文档字段' }
+export const schemaComments = {
+ products: {id:'主键',name:'名称',normalized_name:'规范化名称',description:'描述',product_type:'类型',icon:'图标',status:'状态',completion_percent:'完成度',user_count:'用户数',user_count_source:'用户数来源',app_url:'应用地址',repository_path:'仓库路径',archived_at:'归档时间',created_at:'创建时间',updated_at:'更新时间',is_deleted:'删除标识'},
+ work_items: {id:'主键',product_id:'产品ID',type:'类型',title:'标题',priority:'优先级',due_date:'截止时间',status:'状态',created_at:'创建时间',updated_at:'更新时间',is_deleted:'删除标识'},
+ versions: {id:'主键',product_id:'产品ID',number:'版本号',status:'状态',released_at:'发布时间',notes:'备注',created_at:'创建时间',updated_at:'更新时间',is_deleted:'删除标识'},
+ documents: {id:'主键',product_id:'产品ID',name:'名称',normalized_name:'规范化名称',content:'内容',created_at:'创建时间',updated_at:'更新时间',is_deleted:'删除标识'}
+}
 export class RepositoryError extends Error { code:'VALIDATION_FAILED'|'NOT_FOUND'|'CONFLICT'|'DUPLICATE'; constructor(code:'VALIDATION_FAILED'|'NOT_FOUND'|'CONFLICT'|'DUPLICATE', message:string){super(message); this.code=code; this.name='RepositoryError'} }
 type ProductInput = Omit<Product,'id'|'createdAt'|'updatedAt'|'archivedAt'|'isDeleted'> & { archivedAt?: string|null }
 type WorkInput = Omit<WorkItem,'id'|'productId'|'createdAt'|'updatedAt'>
@@ -15,7 +20,7 @@ const mapDoc=(r:any):MarkdownDocument=>({...r,id:String(r.id),productId:String(r
 export interface SqliteRepository {
  listProducts(includeArchived?:boolean):Product[]; getProduct(id:string):Product|undefined; createProduct(i:ProductInput):Product; updateProduct(id:string,i:Partial<ProductInput>,expectedUpdatedAt?:string):Product; archiveProduct(id:string,e?:string):Product; restoreProduct(id:string,e?:string):Product;
  listWorkItems(pid:string):WorkItem[]; createWorkItem(pid:string,i:WorkInput):WorkItem; updateWorkItem(id:string,i:Partial<WorkInput>):WorkItem;
- listVersions(pid:string):ProductVersion[]; createVersion(pid:string,i:VersionInput):ProductVersion;
+ listVersions(pid:string):ProductVersion[]; createVersion(pid:string,i:VersionInput):ProductVersion; deleteDocument?(id:string):void; deleteVersion?(id:string):void
  listDocuments(pid:string):MarkdownDocument[]; createDocument(pid:string,i:DocInput,e?:string):MarkdownDocument; updateDocument(id:string,i:Partial<DocInput>,e?:string):MarkdownDocument;
  getProductSummary(pid:string):any; transaction<T>(fn:()=>T):T; tableNames():string[]; close():void
 }

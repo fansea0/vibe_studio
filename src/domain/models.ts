@@ -15,7 +15,7 @@ export interface Product {
   userCount: number
   userCountSource: string
   appUrl: string | null
-  repositoryPath?: string
+  repositoryPath: string
   isDeleted?: boolean
   archivedAt: string | null
   createdAt: string
