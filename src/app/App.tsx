@@ -53,7 +53,12 @@ export default function App({ repository: injectedRepository, initialEntries }: 
     setStudioState(readStudioState(repository))
   }, [repository])
   const saveDocument = useCallback((document: MarkdownDocument) => {
-    repository.saveDocument(document)
+    try {
+      repository.saveDocument(document)
+    } catch (error) {
+      setStudioState(readStudioState(repository))
+      throw error
+    }
     setStudioState(readStudioState(repository))
   }, [repository])
   const archiveProduct = useCallback((product: Product) => {

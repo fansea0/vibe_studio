@@ -224,4 +224,101 @@ describe('Markdown document workspace', () => {
     expect(within(screen.getByRole('article', { name: '文档预览' }))
       .getByRole('heading', { name: 'Flora' })).toBeInTheDocument()
   })
+
+  it('refreshes a stale workspace into the conflict flow when another tab saves the name first', async () => {
+    const firstRepository = createStudioRepository(localStorage)
+    const staleRepository = createStudioRepository(localStorage)
+    const first = renderDocuments(firstRepository)
+    const stale = renderDocuments(staleRepository)
+    const firstView = within(first.container)
+    const staleView = within(stale.container)
+    const user = userEvent.setup()
+
+    await user.upload(
+      firstView.getByLabelText('上传 Markdown 文档'),
+      markdownFile('guide.md', '# First tab'),
+    )
+    await user.upload(
+      staleView.getByLabelText('上传 Markdown 文档'),
+      markdownFile('GUIDE.MD', '# Second tab'),
+    )
+
+    const dialog = await staleView.findByRole('dialog', { name: '文档名称冲突' })
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      '同名文档已在其他窗口保存，请选择覆盖、另存或取消',
+    )
+    expect(firstRepository.listDocuments('flora').filter(
+      ({ name }) => name.toLocaleLowerCase() === 'guide.md',
+    )).toHaveLength(1)
+
+    await user.click(within(dialog).getByRole('button', { name: '覆盖现有文档' }))
+
+    expect(staleView.queryByRole('dialog', { name: '文档名称冲突' })).not.toBeInTheDocument()
+    expect(staleRepository.listDocuments('flora').filter(
+      ({ name }) => name.toLocaleLowerCase() === 'guide.md',
+    )).toEqual([
+      expect.objectContaining({ content: '# Second tab' }),
+    ])
+  })
+
+  it('keeps pending content after a concurrent copy-name collision and recomputes the next copy', async () => {
+    const setupRepository = createStudioRepository(localStorage)
+    setupRepository.saveDocument(storedDocument())
+    const firstRepository = createStudioRepository(localStorage)
+    const staleRepository = createStudioRepository(localStorage)
+    const first = renderDocuments(firstRepository)
+    const stale = renderDocuments(staleRepository)
+    const firstView = within(first.container)
+    const staleView = within(stale.container)
+    const user = userEvent.setup()
+
+    await user.upload(
+      firstView.getByLabelText('上传 Markdown 文档'),
+      markdownFile('guide.md', '# First copy'),
+    )
+    await user.click(within(firstView.getByRole('dialog', { name: '文档名称冲突' }))
+      .getByRole('button', { name: '另存为新文档' }))
+    await user.upload(
+      staleView.getByLabelText('上传 Markdown 文档'),
+      markdownFile('guide.md', '# Second copy'),
+    )
+    const staleDialog = staleView.getByRole('dialog', { name: '文档名称冲突' })
+
+    await user.click(within(staleDialog).getByRole('button', { name: '另存为新文档' }))
+
+    expect(await within(staleDialog).findByRole('alert')).toHaveTextContent(
+      '同名文档已在其他窗口保存，请选择覆盖、另存或取消',
+    )
+    expect(staleRepository.listDocuments('flora').filter(
+      ({ name }) => name.includes('副本'),
+    )).toHaveLength(1)
+
+    await user.click(within(staleDialog).getByRole('button', { name: '另存为新文档' }))
+
+    expect(staleView.queryByRole('dialog', { name: '文档名称冲突' })).not.toBeInTheDocument()
+    expect(staleRepository.listDocuments('flora')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'guide-副本.md', content: '# First copy' }),
+      expect.objectContaining({ name: 'guide-副本-2.md', content: '# Second copy' }),
+    ]))
+  })
+
+  it('normalizes surrounding whitespace before computing a unique copy name', async () => {
+    const repository = createStudioRepository(localStorage)
+    repository.saveDocument(storedDocument())
+    repository.saveDocument(storedDocument({ id: 'existing-copy', name: 'guide-副本.md' }))
+    const user = userEvent.setup()
+    renderDocuments(repository)
+
+    await user.upload(
+      screen.getByLabelText('上传 Markdown 文档'),
+      markdownFile(' guide.md', '# Whitespace copy'),
+    )
+    await user.click(within(screen.getByRole('dialog', { name: '文档名称冲突' }))
+      .getByRole('button', { name: '另存为新文档' }))
+
+    expect(screen.queryByRole('dialog', { name: '文档名称冲突' })).not.toBeInTheDocument()
+    expect(repository.listDocuments('flora')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'guide-副本-2.md', content: '# Whitespace copy' }),
+    ]))
+  })
 })

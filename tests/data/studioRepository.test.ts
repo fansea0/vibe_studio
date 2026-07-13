@@ -238,6 +238,7 @@ describe('createStudioRepository', () => {
   it.each([
     ['missing Markdown extension', { name: 'guide.txt' }],
     ['empty name', { name: '' }],
+    ['non-string name', { name: null }],
     ['non-string content', { content: null }],
   ])('rejects invalid saveDocument data: %s', (_case, patch) => {
     const storage = new FaultyStorage()
@@ -274,6 +275,131 @@ describe('createStudioRepository', () => {
     expect(repository.listDocuments(product.id)).toEqual([valid])
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').documents).toEqual([valid])
     expect(repository.listProducts()).toEqual([product])
+  })
+
+  it('rejects a case-insensitive duplicate document name from the latest storage snapshot', () => {
+    const firstRepository = createStudioRepository(localStorage)
+    const staleRepository = createStudioRepository(localStorage)
+    firstRepository.listDocuments('flora')
+    staleRepository.listDocuments('flora')
+
+    firstRepository.saveDocument({ ...document('first-guide', 'flora'), name: 'guide.md' })
+
+    expect(() => staleRepository.saveDocument({
+      ...document('stale-guide', 'flora'),
+      name: ' GUIDE.MD ',
+    })).toThrowError(expect.objectContaining({
+      name: 'RepositoryError',
+      code: 'DUPLICATE_DOCUMENT',
+      message: expect.stringContaining('GUIDE.MD'),
+    }))
+    expect(firstRepository.listDocuments('flora').filter(
+      ({ name }) => name.toLocaleLowerCase() === 'guide.md',
+    )).toHaveLength(1)
+  })
+
+  it('rejects a stale duplicate copy name', () => {
+    const firstRepository = createStudioRepository(localStorage)
+    const staleRepository = createStudioRepository(localStorage)
+
+    firstRepository.saveDocument({
+      ...document('first-copy', 'flora'),
+      name: 'guide-副本.md',
+    })
+
+    expect(() => staleRepository.saveDocument({
+      ...document('stale-copy', 'flora'),
+      name: 'GUIDE-副本.md',
+    })).toThrowError(expect.objectContaining({ code: 'DUPLICATE_DOCUMENT' }))
+  })
+
+  it('allows overwriting the same document id without treating its name as a duplicate', () => {
+    const repository = createStudioRepository(localStorage)
+    const original = { ...document('same-document', 'flora'), name: 'guide.md' }
+    repository.saveDocument(original)
+
+    expect(() => repository.saveDocument({
+      ...original,
+      name: ' GUIDE.MD ',
+      content: '# Updated',
+      updatedAt: '2026-07-02T00:00:00.000Z',
+    })).not.toThrow()
+    expect(repository.listDocuments('flora').filter(({ id }) => id === original.id)).toEqual([
+      expect.objectContaining({ name: 'GUIDE.MD', content: '# Updated' }),
+    ])
+  })
+
+  it('allows the same normalized document name in different products', () => {
+    const repository = createStudioRepository(localStorage)
+
+    repository.saveDocument({ ...document('flora-guide', 'flora'), name: 'guide.md' })
+
+    expect(() => repository.saveDocument({
+      ...document('resume-guide', 'resume-genius'),
+      name: ' GUIDE.MD ',
+    })).not.toThrow()
+    expect(repository.listDocuments('flora')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'guide.md' }),
+    ]))
+    expect(repository.listDocuments('resume-genius')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'GUIDE.MD' }),
+    ]))
+  })
+
+  it('salvages duplicate external names per product by keeping the latest updated document', () => {
+    const older = {
+      ...document('older-guide', product.id),
+      name: 'guide.md',
+      updatedAt: '2026-07-02T00:30:00+14:00',
+    }
+    const latest = {
+      ...document('latest-guide', product.id),
+      name: ' GUIDE.MD '.trim(),
+      updatedAt: '2026-07-01T23:00:00.000Z',
+    }
+    const otherProduct = { ...product, id: 'other-product', name: 'Other Product' }
+    const crossProduct = {
+      ...document('cross-product-guide', otherProduct.id),
+      name: 'Guide.md',
+      updatedAt: '2026-07-02T00:00:00.000Z',
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      products: [product, otherProduct],
+      workItems: [],
+      versions: [],
+      documents: [older, crossProduct, latest],
+    }))
+
+    const repository = createStudioRepository(localStorage)
+
+    expect(repository.listDocuments(product.id)).toEqual([latest])
+    expect(repository.listDocuments(otherProduct.id)).toEqual([crossProduct])
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').documents).toEqual([
+      crossProduct,
+      latest,
+    ])
+  })
+
+  it('does not collide product ids and document names containing colons during salvage', () => {
+    const productA = { ...product, id: 'a', name: 'Product A' }
+    const productAB = { ...product, id: 'a:b', name: 'Product AB' }
+    const documentA = { ...document('colon-name', productA.id), name: 'b:c.md' }
+    const documentAB = { ...document('colon-product', productAB.id), name: 'c.md' }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      products: [productA, productAB],
+      workItems: [],
+      versions: [],
+      documents: [documentA, documentAB],
+    }))
+
+    const repository = createStudioRepository(localStorage)
+
+    expect(repository.listDocuments(productA.id)).toEqual([documentA])
+    expect(repository.listDocuments(productAB.id)).toEqual([documentAB])
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').documents).toEqual([
+      documentA,
+      documentAB,
+    ])
   })
 
   it.each([

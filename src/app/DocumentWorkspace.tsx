@@ -14,10 +14,14 @@ interface DocumentWorkspaceProps {
 interface PendingDocument {
   name: string
   content: string
-  existing: MarkdownDocument
 }
 
 const isMarkdownName = (name: string): boolean => /\.(?:md|markdown)$/i.test(name)
+const normalizedName = (name: string): string => name.trim().toLocaleLowerCase()
+const isDuplicateDocumentError = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null &&
+  'code' in error && error.code === 'DUPLICATE_DOCUMENT'
+const duplicateDocumentMessage = '同名文档已在其他窗口保存，请选择覆盖、另存或取消'
 
 const newestDocumentId = (documents: MarkdownDocument[]): string | null =>
   [...documents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.id ?? null
@@ -28,14 +32,15 @@ const createId = (): string =>
     : `document-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 const copyName = (name: string, documents: MarkdownDocument[]): string => {
-  const extensionStart = name.lastIndexOf('.')
-  const base = name.slice(0, extensionStart)
-  const extension = name.slice(extensionStart)
-  const existingNames = new Set(documents.map((document) => document.name.toLocaleLowerCase()))
+  const trimmedName = name.trim()
+  const extensionStart = trimmedName.lastIndexOf('.')
+  const base = trimmedName.slice(0, extensionStart)
+  const extension = trimmedName.slice(extensionStart)
+  const existingNames = new Set(documents.map((document) => normalizedName(document.name)))
   let copyNumber = 1
   let candidate = `${base}-副本${extension}`
 
-  while (existingNames.has(candidate.toLocaleLowerCase())) {
+  while (existingNames.has(normalizedName(candidate))) {
     copyNumber += 1
     candidate = `${base}-副本-${copyNumber}${extension}`
   }
@@ -57,6 +62,9 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
     [documents],
   )
   const selected = documents.find(({ id }) => id === selectedId) ?? orderedDocuments[0] ?? null
+  const pendingExisting = pending
+    ? documents.find((document) => normalizedName(document.name) === normalizedName(pending.name)) ?? null
+    : null
 
   useEffect(() => {
     if (selectedId === null || !documents.some(({ id }) => id === selectedId)) {
@@ -64,14 +72,22 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
     }
   }, [documents, selectedId])
 
-  const save = (document: MarkdownDocument): boolean => {
+  const save = (
+    document: MarkdownDocument,
+    pendingOnDuplicate?: PendingDocument,
+  ): boolean => {
     try {
       onSaveDocument(document)
       setSelectedId(document.id)
       setError('')
       return true
-    } catch {
-      setError('保存失败，请稍后重试')
+    } catch (saveError) {
+      if (isDuplicateDocumentError(saveError)) {
+        if (pendingOnDuplicate) setPending(pendingOnDuplicate)
+        setError(duplicateDocumentMessage)
+      } else {
+        setError('保存失败，请稍后重试')
+      }
       return false
     }
   }
@@ -99,23 +115,26 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
     input.value = ''
 
     const existing = documents.find(
-      (document) => document.name.toLocaleLowerCase() === file.name.toLocaleLowerCase(),
+      (document) => normalizedName(document.name) === normalizedName(file.name),
     )
     if (existing) {
-      setPending({ name: file.name, content, existing })
+      setPending({ name: file.name, content })
       return
     }
 
     const now = new Date().toISOString()
-    save({ id: createId(), productId, name: file.name, content, createdAt: now, updatedAt: now })
+    save(
+      { id: createId(), productId, name: file.name, content, createdAt: now, updatedAt: now },
+      { name: file.name, content },
+    )
   }
 
   const overwrite = () => {
-    if (!pending) return
+    if (!pending || !pendingExisting) return
     const saved = save({
-      ...pending.existing,
+      ...pendingExisting,
       content: pending.content,
-      updatedAt: nextUpdatedAt(pending.existing.updatedAt),
+      updatedAt: nextUpdatedAt(pendingExisting.updatedAt),
     })
     if (saved) setPending(null)
   }
@@ -132,6 +151,11 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
       updatedAt: now,
     })
     if (saved) setPending(null)
+  }
+
+  const closeConflict = () => {
+    setPending(null)
+    setError('')
   }
 
   return (
@@ -174,13 +198,13 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
         </div>
       )}
       {pending && (
-        <Modal title="文档名称冲突" onClose={() => setPending(null)} className="confirm-dialog">
-          <p>当前产品中已存在同名文档“{pending.existing.name}”。请选择处理方式。</p>
+        <Modal title="文档名称冲突" onClose={closeConflict} className="confirm-dialog">
+          <p>当前产品中已存在同名文档“{pendingExisting?.name ?? pending.name}”。请选择处理方式。</p>
           {error && <p role="alert" className="feedback error">{error}</p>}
           <div className="dialog-actions">
-            <button type="button" className="secondary" onClick={() => setPending(null)}>取消</button>
-            <button type="button" className="secondary" onClick={saveCopy}>另存为新文档</button>
-            <button type="button" onClick={overwrite}>覆盖现有文档</button>
+            <button type="button" className="secondary" onClick={closeConflict}>取消</button>
+            <button type="button" className="secondary" onClick={saveCopy} disabled={!pendingExisting}>另存为新文档</button>
+            <button type="button" onClick={overwrite} disabled={!pendingExisting}>覆盖现有文档</button>
           </div>
         </Modal>
       )}

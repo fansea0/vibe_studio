@@ -106,6 +106,7 @@ const isVersion = (value: unknown): value is ProductVersion =>
   isIsoDate(value.updatedAt)
 
 const hasMarkdownExtension = (name: string): boolean => /\.(?:md|markdown)$/i.test(name)
+const normalizedDocumentName = (name: string): string => name.trim().toLocaleLowerCase()
 
 const isDocument = (value: unknown): value is MarkdownDocument =>
   isRecord(value) &&
@@ -124,6 +125,26 @@ const validRecords = <T>(value: unknown, validate: (record: unknown) => record i
   return value.filter(validate)
 }
 
+const uniqueDocuments = (documents: MarkdownDocument[]): MarkdownDocument[] => {
+  const latestByProduct = new Map<string, Map<string, MarkdownDocument>>()
+  for (const document of documents) {
+    let latestByName = latestByProduct.get(document.productId)
+    if (!latestByName) {
+      latestByName = new Map<string, MarkdownDocument>()
+      latestByProduct.set(document.productId, latestByName)
+    }
+    const name = normalizedDocumentName(document.name)
+    const current = latestByName.get(name)
+    if (!current || Date.parse(document.updatedAt) > Date.parse(current.updatedAt)) {
+      latestByName.set(name, document)
+    }
+  }
+  const retained = new Set(
+    [...latestByProduct.values()].flatMap((documentsByName) => [...documentsByName.values()]),
+  )
+  return documents.filter((document) => retained.has(document))
+}
+
 const sanitizeStudio = (value: unknown): StudioData | null => {
   if (!isRecord(value)) return null
 
@@ -136,7 +157,9 @@ const sanitizeStudio = (value: unknown): StudioData | null => {
     products,
     workItems: validRecords(value.workItems, isWorkItem).filter(belongsToProduct),
     versions: validRecords(value.versions, isVersion).filter(belongsToProduct),
-    documents: validRecords(value.documents, isDocument).filter(belongsToProduct),
+    documents: uniqueDocuments(
+      validRecords(value.documents, isDocument).filter(belongsToProduct),
+    ),
   }
 }
 
@@ -164,6 +187,7 @@ export type RepositoryErrorCode =
   | 'VALIDATION_FAILED'
   | 'PRODUCT_NOT_FOUND'
   | 'DUPLICATE_VERSION'
+  | 'DUPLICATE_DOCUMENT'
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode
@@ -305,9 +329,25 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
     },
     listDocuments: (productId) => read().documents.filter((document) => document.productId === productId),
     saveDocument: (document) => {
-      const validDocument = requireValid(document, isDocument)
+      const normalizedDocument = {
+        ...document,
+        name: isString(document.name) ? document.name.trim() : document.name,
+      }
+      const validDocument = requireValid(normalizedDocument, isDocument)
       const data = read(false)
       requireProduct(data, validDocument.productId)
+      const normalizedName = normalizedDocumentName(validDocument.name)
+      const duplicate = data.documents.some((storedDocument) =>
+        storedDocument.productId === validDocument.productId &&
+        storedDocument.id !== validDocument.id &&
+        normalizedDocumentName(storedDocument.name) === normalizedName,
+      )
+      if (duplicate) {
+        throw new RepositoryError(
+          'DUPLICATE_DOCUMENT',
+          `Document name "${validDocument.name}" already exists for this product.`,
+        )
+      }
       persistMutation({ ...data, documents: upsertChild(data.documents, validDocument) })
     },
     reset: () => persistMutation(emptyStudio()),
