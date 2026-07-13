@@ -3,10 +3,10 @@ import type { Product, ProductVersion, WorkItem, MarkdownDocument, ProductStatus
 
 type Comments = Record<string, Record<string, string>>
 export const schemaComments: Comments = {
-  products: { id: '主键', name: '名称', normalized_name: '规范化名称', description: '描述', product_type: '类型', icon: '图标', status: '状态', completion_percent: '完成度', user_count: '用户数', user_count_source: '用户数来源', app_url: '应用地址', repository_path: '仓库路径', archived_at: '归档时间', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识' },
-  work_items: { id: '主键', product_id: '产品ID', type: '类型', title: '标题', priority: '优先级', due_date: '截止时间', status: '状态', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识' },
-  versions: { id: '主键', product_id: '产品ID', number: '版本号', status: '状态', released_at: '发布时间', notes: '备注', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识' },
-  documents: { id: '主键', product_id: '产品ID', name: '名称', normalized_name: '规范化名称', content: '内容', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识' }
+  products: { id: '主键', name: '名称', normalized_name: '规范化名称', description: '描述', product_type: '类型', icon: '图标', status: '状态', status_before_archive: '归档前状态', completion_percent: '完成度', user_count: '用户数', user_count_source: '用户数来源', app_url: '应用地址', repository_path: '仓库路径', archived_at: '归档时间', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识' },
+  work_items: { id: '主键', product_id: '产品ID', type: '类型', title: '标题', priority: '优先级', due_date: '截止时间', status: '状态', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', archive_deleted: '归档删除标识' },
+  versions: { id: '主键', product_id: '产品ID', number: '版本号', status: '状态', released_at: '发布时间', notes: '备注', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', archive_deleted: '归档删除标识' },
+  documents: { id: '主键', product_id: '产品ID', name: '名称', normalized_name: '规范化名称', content: '内容', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', archive_deleted: '归档删除标识' }
 }
 export class RepositoryError extends Error {
   code: 'VALIDATION_FAILED'|'NOT_FOUND'|'CONFLICT'|'DUPLICATE'
@@ -89,6 +89,8 @@ created_at TEXT NOT NULL DEFAULT '',
 updated_at TEXT NOT NULL DEFAULT '',
 -- 字段: 删除标识
 is_deleted INTEGER NOT NULL DEFAULT 0,
+-- 字段: 归档删除标识
+archive_deleted INTEGER NOT NULL DEFAULT 0,
 FOREIGN KEY(product_id) REFERENCES products(id)
 );
 CREATE TABLE IF NOT EXISTS versions (
@@ -110,6 +112,8 @@ created_at TEXT NOT NULL DEFAULT '',
 updated_at TEXT NOT NULL DEFAULT '',
 -- 字段: 删除标识
 is_deleted INTEGER NOT NULL DEFAULT 0,
+-- 字段: 归档删除标识
+archive_deleted INTEGER NOT NULL DEFAULT 0,
 FOREIGN KEY(product_id) REFERENCES products(id)
 );
 CREATE TABLE IF NOT EXISTS documents (
@@ -129,12 +133,15 @@ created_at TEXT NOT NULL DEFAULT '',
 updated_at TEXT NOT NULL DEFAULT '',
 -- 字段: 删除标识
 is_deleted INTEGER NOT NULL DEFAULT 0,
+-- 字段: 归档删除标识
+archive_deleted INTEGER NOT NULL DEFAULT 0,
 FOREIGN KEY(product_id) REFERENCES products(id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS products_name_uq ON products(normalized_name) WHERE is_deleted=0;
 CREATE UNIQUE INDEX IF NOT EXISTS versions_product_number_uq ON versions(product_id,number) WHERE is_deleted=0;
 CREATE UNIQUE INDEX IF NOT EXISTS documents_product_name_uq ON documents(product_id,normalized_name) WHERE is_deleted=0;`)
   try { db.exec('ALTER TABLE products ADD COLUMN status_before_archive INTEGER NOT NULL DEFAULT 0') } catch { }
+  for (const table of ['work_items','versions','documents']) { try { db.exec(`ALTER TABLE ${table} ADD COLUMN archive_deleted INTEGER NOT NULL DEFAULT 0`) } catch { } }
   db.exec('CREATE INDEX IF NOT EXISTS work_items_product_idx ON work_items(product_id); CREATE INDEX IF NOT EXISTS versions_product_idx ON versions(product_id); CREATE INDEX IF NOT EXISTS documents_product_idx ON documents(product_id)')
   const getProduct = (id: string) => { const r = db.prepare('SELECT * FROM products WHERE id=? AND is_deleted=0').get(Number(id)); return r ? mapProduct(r) : undefined }
   const ensureName = (name: string) => { if (typeof name !== 'string' || !normalized(name)) throw new RepositoryError('VALIDATION_FAILED', 'name') }
@@ -147,7 +154,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS documents_product_name_uq ON documents(product
     getProduct,
     createProduct(i) { ensureName(i.name); ensureProductStatus(i.status); if (typeof i.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); const t = now(); try { const x = db.prepare('INSERT INTO products(name,normalized_name,description,product_type,icon,status,completion_percent,user_count,user_count_source,app_url,repository_path,archived_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(i.name, normalized(i.name), i.description, i.productType, i.icon, statusCode[i.status], i.completionPercent, i.userCount, i.userCountSource, i.appUrl ?? '', i.repositoryPath ?? '', i.archivedAt ?? '', t, t); return getProduct(String(x.lastInsertRowid))! } catch (e) { throw mapMutationError(e, 'product') } },
     updateProduct(id, i, expected) { const p = getProduct(id); if (!p) throw new RepositoryError('NOT_FOUND', 'product'); if (expected && p.updatedAt !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); const n = { ...p, ...i }; ensureName(n.name); ensureProductStatus(n.status); if (typeof n.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); if (statusCode[n.status] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'status'); const updatedAt = bump(p.updatedAt); try { db.prepare('UPDATE products SET name=?,normalized_name=?,description=?,product_type=?,icon=?,status=?,completion_percent=?,user_count=?,user_count_source=?,app_url=?,repository_path=?,archived_at=?,updated_at=? WHERE id=? AND is_deleted=0').run(n.name, normalized(n.name), n.description, n.productType, n.icon, statusCode[n.status], n.completionPercent, n.userCount, n.userCountSource, n.appUrl ?? '', n.repositoryPath ?? '', n.archivedAt ?? '', updatedAt, Number(id)) } catch (e) { throw mapMutationError(e, 'product') } return getProduct(id)! },
-    archiveProduct(id, e) { return db.transaction(() => { const p=getProduct(id); if(!p) throw new RepositoryError('NOT_FOUND','product'); if(e&&p.updatedAt!==e) throw new RepositoryError('CONFLICT','updatedAt'); const t=now(); db.prepare('UPDATE products SET status_before_archive=status,status=3,archived_at=?,updated_at=? WHERE id=?').run(t,t,Number(id)); for(const table of ['work_items','versions','documents']) db.prepare(`UPDATE ${table} SET is_deleted=1 WHERE product_id=?`).run(Number(id)); return getProduct(id)! })() }, restoreProduct(id, e) { return db.transaction(() => { const p=getProduct(id); if(!p) throw new RepositoryError('NOT_FOUND','product'); if(e&&p.updatedAt!==e) throw new RepositoryError('CONFLICT','updatedAt'); const row=db.prepare('SELECT status_before_archive FROM products WHERE id=?').get(Number(id)) as any; const status=row?.status_before_archive===1||row?.status_before_archive===2?row.status_before_archive:0; const t=now(); db.prepare('UPDATE products SET status=?,archived_at="",updated_at=? WHERE id=?').run(status,t,Number(id)); for(const table of ['work_items','versions','documents']) db.prepare(`UPDATE ${table} SET is_deleted=0 WHERE product_id=?`).run(Number(id)); return getProduct(id)! })() },
+    archiveProduct(id, e) { return db.transaction(() => { const p=getProduct(id); if(!p) throw new RepositoryError('NOT_FOUND','product'); if(e&&p.updatedAt!==e) throw new RepositoryError('CONFLICT','updatedAt'); const t=now(); db.prepare('UPDATE products SET status_before_archive=status,status=3,archived_at=?,updated_at=? WHERE id=?').run(t,t,Number(id)); for(const table of ['work_items','versions','documents']) { db.prepare(`UPDATE ${table} SET is_deleted=1,archive_deleted=1 WHERE product_id=? AND is_deleted=0`).run(Number(id)) } return getProduct(id)! })() }, restoreProduct(id, e) { return db.transaction(() => { const p=getProduct(id); if(!p) throw new RepositoryError('NOT_FOUND','product'); if(e&&p.updatedAt!==e) throw new RepositoryError('CONFLICT','updatedAt'); const row=db.prepare('SELECT status_before_archive FROM products WHERE id=?').get(Number(id)) as any; const status=row?.status_before_archive===1||row?.status_before_archive===2?row.status_before_archive:0; const t=now(); db.prepare('UPDATE products SET status=?,archived_at="",updated_at=? WHERE id=?').run(status,t,Number(id)); for(const table of ['work_items','versions','documents']) { db.prepare(`UPDATE ${table} SET is_deleted=0,archive_deleted=0 WHERE product_id=? AND archive_deleted=1`).run(Number(id)) } return getProduct(id)! })() },
     listWorkItems(pid) { return db.prepare('SELECT * FROM work_items WHERE product_id=? AND is_deleted=0').all(Number(pid)).map(mapWork) },
     createWorkItem(pid, i) { if (!getProduct(pid)) throw new RepositoryError('NOT_FOUND', 'product'); ensureWork(i); const t = now(); try { const x = db.prepare('INSERT INTO work_items(product_id,type,title,priority,due_date,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(Number(pid), workTypeCode[i.type], i.title, priorityCode[i.priority], i.dueDate ?? '', workStatusCode[i.status], t, t); return mapWork(db.prepare('SELECT * FROM work_items WHERE id=?').get(Number(x.lastInsertRowid))) } catch (e) { throw mapMutationError(e, 'work item') } },
     updateWorkItem(id, i, expected) { const r = db.prepare('SELECT * FROM work_items WHERE id=? AND is_deleted=0').get(Number(id)) as any; if (!r) throw new RepositoryError('NOT_FOUND', 'work item'); if (expected && r.updated_at !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); ensureWork({ ...i, title: i.title ?? r.title, dueDate: i.dueDate === undefined ? (r.due_date || null) : i.dueDate }); try { db.prepare('UPDATE work_items SET type=?,title=?,priority=?,due_date=?,status=?,updated_at=? WHERE id=? AND is_deleted=0').run(i.type === undefined ? r.type : workTypeCode[i.type], i.title ?? r.title, i.priority === undefined ? r.priority : priorityCode[i.priority], i.dueDate === undefined ? r.due_date : i.dueDate ?? '', i.status === undefined ? r.status : workStatusCode[i.status], bump(r.updated_at), Number(id)) } catch (e) { throw mapMutationError(e, 'work item') } return mapWork(db.prepare('SELECT * FROM work_items WHERE id=?').get(Number(id))) },
