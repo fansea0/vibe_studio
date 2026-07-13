@@ -1,4 +1,4 @@
-import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
+import type { CommitSummary, MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 
 export interface StudioSnapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[]; documents: MarkdownDocument[] }
 export interface ApiError extends Error { code?: string; status?: number }
@@ -45,3 +45,5 @@ export const createVersion = (version: ProductVersion) => request<ProductVersion
 export const updateVersion = (version: ProductVersion, expectedUpdatedAt: string) => request<ProductVersion>(`/api/versions/${version.id}`, json('PATCH', { ...version, expectedUpdatedAt }))
 export const createDocument = (document: MarkdownDocument, expectedUpdatedAt: string | null) => request<MarkdownDocument>(`/api/products/${document.productId}/documents`, json('POST', { ...document, expectedUpdatedAt }))
 export const updateDocument = (document: MarkdownDocument, expectedUpdatedAt: string) => request<MarkdownDocument>(`/api/documents/${document.id}`, json('PATCH', { ...document, expectedUpdatedAt }))
+export interface CommitLogResponse { items: CommitSummary[]; checkedAt: string }
+export const fetchCommits = (productId: string, signal?: AbortSignal, limit = 5) => request<CommitLogResponse>(`/api/products/${encodeURIComponent(productId)}/commits?limit=${limit}`, { signal })
