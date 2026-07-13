@@ -206,6 +206,43 @@ describe('createStudioRepository', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').products).toEqual([])
   })
 
+  it('drops persisted entities with empty ids, product ids, or product names', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      products: [product, { ...product, id: '' }, { ...product, id: 'blank-name', name: '   ' }],
+      workItems: [workItem('valid-item', product.id), workItem('', product.id), workItem('blank-product', '')],
+      versions: [version('valid-version', product.id), version('', product.id), version('blank-product', '')],
+      documents: [document('valid-document', product.id), document('', product.id), document('blank-product', '')],
+    }))
+
+    const snapshot = createStudioRepository(localStorage).readSnapshot()
+
+    expect(snapshot.products).toEqual([product])
+    expect(snapshot.workItems).toEqual([workItem('valid-item', product.id)])
+    expect(snapshot.versions).toEqual([version('valid-version', product.id)])
+    expect(snapshot.documents).toEqual([document('valid-document', product.id)])
+  })
+
+  it('rejects mutations with empty entity ids, product ids, or product names', async () => {
+    const repository = createStudioRepository(localStorage)
+
+    await expect(repository.saveProduct({ ...product, id: '' }, { expectedUpdatedAt: null }))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveProduct({ ...product, name: '   ' }, { expectedUpdatedAt: null }))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveWorkItem(workItem('', 'flora')))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveWorkItem(workItem('item', '')))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveVersion(version('', 'flora')))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveVersion(version('version', '')))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveDocument(document('', 'flora'), { expectedUpdatedAt: null }))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveDocument(document('document', ''), { expectedUpdatedAt: null }))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+  })
+
   it.each(['July 1, 2026', '2026-02-30T00:00:00.000Z'])(
     'rejects a non-RFC3339 or impossible date: %s',
     (invalidDate) => {

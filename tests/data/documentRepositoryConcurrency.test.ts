@@ -15,12 +15,12 @@ const candidate = (id: string, name: string, content = '# Content'): MarkdownDoc
 
 class ControlledLock implements MutationLock {
   private readonly queued: Array<{
-    operation: () => Promise<unknown> | unknown
+    operation: () => unknown
     resolve: (value: unknown) => void
     reject: (reason: unknown) => void
   }> = []
 
-  request<T>(operation: () => Promise<T> | T): Promise<T> {
+  request<T>(_name: string, operation: () => T): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       this.queued.push({
         operation,
@@ -35,7 +35,7 @@ class ControlledLock implements MutationLock {
   async releaseNext(): Promise<void> {
     const next = this.queued.shift()
     if (!next) throw new Error('No queued lock operation')
-    try { next.resolve(await next.operation()) } catch (error) { next.reject(error) }
+    try { next.resolve(next.operation()) } catch (error) { next.reject(error) }
   }
 }
 

@@ -25,12 +25,15 @@ export function Modal({ title, children, onClose, className = '', showCloseButto
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const dialog = dialogRef.current
-    const firstFocusable = dialog?.querySelector<HTMLElement>('[data-autofocus]')
-      ?? dialog?.querySelector<HTMLElement>(focusableSelector)
-    firstFocusable?.focus()
+    const focusFirst = () => {
+      const firstFocusable = dialog?.querySelector<HTMLElement>('[data-autofocus]:not([disabled])')
+        ?? dialog?.querySelector<HTMLElement>(focusableSelector)
+      ;(firstFocusable ?? dialog)?.focus()
+    }
+    focusFirst()
 
     const keepFocusInside = (event: FocusEvent) => {
-      if (dialog && event.target instanceof Node && !dialog.contains(event.target)) firstFocusable?.focus()
+      if (dialog && event.target instanceof Node && !dialog.contains(event.target)) focusFirst()
     }
     document.addEventListener('focusin', keepFocusInside)
     return () => {

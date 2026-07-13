@@ -3,7 +3,9 @@ import { MAX_MARKDOWN_FILE_BYTES, normalizeDocumentName, utf8ByteLength, validat
 import { seedStudio, type StudioData } from './seedStudio'
 
 export const STUDIO_STORAGE_KEY = 'vibe-studio:v1'
-export const STUDIO_MUTATION_LOCK_KEY = 'vibe-studio:mutation-lock'
+const STUDIO_MUTATION_LOCK_NAME = 'vibe-studio:mutations'
+const MUTATION_LOCK_DATABASE = 'vibe-studio-mutation-lock'
+const MUTATION_LOCK_STORE = 'locks'
 
 const emptyStudio = (): StudioData => ({
   products: [],
@@ -20,6 +22,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
 const isString = (value: unknown): value is string => typeof value === 'string'
+const isNonEmptyString = (value: unknown): value is string =>
+  isString(value) && value.trim().length > 0
 const isNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 const isNullableString = (value: unknown): value is string | null =>
@@ -59,8 +63,8 @@ const isOneOf = <T extends string>(value: unknown, options: readonly T[]): value
 
 const isProduct = (value: unknown): value is Product =>
   isRecord(value) &&
-  isString(value.id) &&
-  isString(value.name) &&
+  isNonEmptyString(value.id) &&
+  isNonEmptyString(value.name) &&
   isString(value.description) &&
   isString(value.productType) &&
   isString(value.icon) &&
@@ -80,8 +84,8 @@ const isProduct = (value: unknown): value is Product =>
 
 const isWorkItem = (value: unknown): value is WorkItem =>
   isRecord(value) &&
-  isString(value.id) &&
-  isString(value.productId) &&
+  isNonEmptyString(value.id) &&
+  isNonEmptyString(value.productId) &&
   isOneOf(value.type, ['requirement', 'bug']) &&
   isString(value.title) &&
   isOneOf(value.priority, ['low', 'medium', 'high', 'urgent']) &&
@@ -96,8 +100,8 @@ const hasValidVersionReleaseState = (value: Record<string, unknown>): boolean =>
 
 const isVersion = (value: unknown): value is ProductVersion =>
   isRecord(value) &&
-  isString(value.id) &&
-  isString(value.productId) &&
+  isNonEmptyString(value.id) &&
+  isNonEmptyString(value.productId) &&
   isString(value.number) &&
   value.number.length > 0 &&
   value.number === value.number.trim() &&
@@ -109,8 +113,8 @@ const isVersion = (value: unknown): value is ProductVersion =>
 
 const isDocument = (value: unknown): value is MarkdownDocument =>
   isRecord(value) &&
-  isString(value.id) &&
-  isString(value.productId) &&
+  isNonEmptyString(value.id) &&
+  isNonEmptyString(value.productId) &&
   isString(value.name) &&
   validateDocumentName(value.name).valid &&
   isString(value.content) &&
@@ -254,59 +258,120 @@ export interface DocumentMutationToken { expectedUpdatedAt: string | null }
 export interface ProductMutationToken { expectedUpdatedAt: string | null }
 
 export interface MutationLock {
-  request<T>(operation: () => Promise<T> | T): Promise<T>
+  request<T>(name: string, operation: () => T): Promise<T>
 }
 
-interface LeaseLockOptions {
-  leaseMs?: number
-  timeoutMs?: number
-  pollMs?: number
-  now?: () => number
-  sleep?: (milliseconds: number) => Promise<void>
-  owner?: string
-}
+const lockUnavailable = (message: string, cause?: unknown): RepositoryError =>
+  new RepositoryError('LOCK_UNAVAILABLE', message, { cause })
 
-interface StoredLease { owner: string; expiresAt: number }
+export const createIndexedDbMutationLock = (indexedDB: IDBFactory): MutationLock => {
+  let databasePromise: Promise<IDBDatabase> | null = null
 
-const readLease = (storage: Storage): StoredLease | null => {
-  try {
-    const value = JSON.parse(storage.getItem(STUDIO_MUTATION_LOCK_KEY) ?? 'null') as unknown
-    return isRecord(value) && isString(value.owner) && isNumber(value.expiresAt)
-      ? { owner: value.owner, expiresAt: value.expiresAt }
-      : null
-  } catch { return null }
-}
-
-export const createLocalStorageLeaseMutationLock = (
-  storage: Storage,
-  options: LeaseLockOptions = {},
-): MutationLock => {
-  const now = options.now ?? Date.now
-  const sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)))
-  const owner = options.owner ?? (globalThis.crypto?.randomUUID?.() ?? `lease-${Math.random()}`)
-  const leaseMs = options.leaseMs ?? 2_000
-  const timeoutMs = options.timeoutMs ?? 2_000
-  const pollMs = options.pollMs ?? 15
-  return {
-    request: async <T,>(operation: () => Promise<T> | T): Promise<T> => {
-      const startedAt = now()
-      while (true) {
-        const currentTime = now()
-        const current = readLease(storage)
-        if (current === null || current.expiresAt <= currentTime || current.owner === owner) {
-          storage.setItem(STUDIO_MUTATION_LOCK_KEY, JSON.stringify({ owner, expiresAt: currentTime + leaseMs }))
-          if (readLease(storage)?.owner === owner) break
-        }
-        if (currentTime - startedAt >= timeoutMs) {
-          throw new RepositoryError('LOCK_UNAVAILABLE', 'Timed out acquiring the Studio mutation lock.')
-        }
-        await sleep(pollMs)
-      }
+  const openDatabase = (): Promise<IDBDatabase> => {
+    if (databasePromise !== null) return databasePromise
+    databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
+      let request: IDBOpenDBRequest
       try {
-        return await operation()
-      } finally {
-        if (readLease(storage)?.owner === owner) storage.removeItem(STUDIO_MUTATION_LOCK_KEY)
+        request = indexedDB.open(MUTATION_LOCK_DATABASE, 1)
+      } catch (cause) {
+        reject(lockUnavailable('IndexedDB mutation lock could not be opened.', cause))
+        return
       }
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(MUTATION_LOCK_STORE)) {
+          request.result.createObjectStore(MUTATION_LOCK_STORE, { keyPath: 'name' })
+        }
+      }
+      request.onsuccess = () => {
+        const database = request.result
+        const close = () => {
+          database.close()
+          databasePromise = null
+        }
+        database.onversionchange = close
+        database.onclose = () => { databasePromise = null }
+        resolve(database)
+      }
+      request.onerror = () => reject(lockUnavailable('IndexedDB mutation lock could not be opened.', request.error))
+      request.onblocked = () => reject(lockUnavailable('IndexedDB mutation lock upgrade was blocked.'))
+    }).catch((error) => {
+      databasePromise = null
+      throw error
+    })
+    return databasePromise
+  }
+
+  return {
+    request: async <T,>(name: string, operation: () => T): Promise<T> => {
+      const database = await openDatabase()
+      return new Promise<T>((resolve, reject) => {
+        let transaction: IDBTransaction
+        try {
+          transaction = database.transaction(MUTATION_LOCK_STORE, 'readwrite')
+        } catch (cause) {
+          databasePromise = null
+          reject(lockUnavailable('IndexedDB mutation transaction could not be started.', cause))
+          return
+        }
+
+        let result: T
+        let operationError: unknown
+        let infrastructureError: RepositoryError | null = null
+        let settled = false
+        const rejectOnce = (error: unknown) => {
+          if (settled) return
+          settled = true
+          reject(error)
+        }
+        transaction.oncomplete = () => {
+          if (settled) return
+          settled = true
+          resolve(result)
+        }
+        transaction.onerror = () => rejectOnce(
+          operationError ?? infrastructureError ?? lockUnavailable('IndexedDB mutation transaction failed.', transaction.error),
+        )
+        transaction.onabort = () => rejectOnce(
+          operationError ?? infrastructureError ?? lockUnavailable('IndexedDB mutation transaction was aborted.', transaction.error),
+        )
+
+        let store: IDBObjectStore
+        let gate: IDBRequest
+        try {
+          store = transaction.objectStore(MUTATION_LOCK_STORE)
+          gate = store.get(name)
+        } catch (cause) {
+          infrastructureError = lockUnavailable('IndexedDB mutation transaction could not be queued.', cause)
+          transaction.abort()
+          return
+        }
+        gate.onerror = () => {
+          infrastructureError = lockUnavailable('IndexedDB mutation transaction could not acquire the lock.', gate.error)
+        }
+        gate.onsuccess = () => {
+          try {
+            result = operation()
+          } catch (error) {
+            operationError = error
+            transaction.abort()
+            return
+          }
+          if (isRecord(result) && typeof result.then === 'function') {
+            operationError = new RepositoryError(
+              'VALIDATION_FAILED',
+              'Mutation lock operations must be synchronous.',
+            )
+            transaction.abort()
+            return
+          }
+          try {
+            store.put({ name, updatedAt: Date.now() })
+          } catch (cause) {
+            infrastructureError = lockUnavailable('IndexedDB mutation transaction could not be committed.', cause)
+            transaction.abort()
+          }
+        }
+      })
     },
   }
 }
@@ -315,7 +380,7 @@ const storageMutationQueues = new WeakMap<Storage, Promise<void>>()
 
 /** In-process serialization for tests and explicitly injected non-browser storage only. */
 const createStorageMutationLock = (storage: Storage): MutationLock => ({
-  request: <T,>(operation: () => Promise<T> | T): Promise<T> => {
+  request: <T,>(_name: string, operation: () => T): Promise<T> => {
     const previous = storageMutationQueues.get(storage) ?? Promise.resolve()
     const result = previous.catch(() => undefined).then(operation)
     storageMutationQueues.set(storage, result.then(() => undefined, () => undefined))
@@ -353,7 +418,7 @@ export const createStudioRepository = (
   const scheduleRecovery = (fallback: StudioData): void => {
     if (recoveryPending) return
     recoveryPending = true
-    void mutationLock.request(() => {
+    void mutationLock.request(STUDIO_MUTATION_LOCK_NAME, () => {
       let payload: string | null
       try { payload = storage.getItem(STUDIO_STORAGE_KEY) } catch { return }
       if (payload === null) return
@@ -407,7 +472,7 @@ export const createStudioRepository = (
   return {
     readSnapshot: () => read(),
     listProducts: () => read().products,
-    saveProduct: (product, token) => mutationLock.request(() => {
+    saveProduct: (product, token) => mutationLock.request(STUDIO_MUTATION_LOCK_NAME, () => {
       const data = read(false)
       const stored = data.products.find(({ id }) => id === product.id)
       if (!isRecord(token) || !(token.expectedUpdatedAt === null || isString(token.expectedUpdatedAt))) {
@@ -432,7 +497,7 @@ export const createStudioRepository = (
       )) throw new RepositoryError('DUPLICATE_PRODUCT', `Product name "${validProduct.name}" already exists.`)
       persistMutation({ ...data, products: upsertProduct(data.products, validProduct) })
     }),
-    migrateLegacyProductLifecycle: (productId) => mutationLock.request(() => {
+    migrateLegacyProductLifecycle: (productId) => mutationLock.request(STUDIO_MUTATION_LOCK_NAME, () => {
       const data = read(false)
       const stored = data.products.find(({ id }) => id === productId)
       if (!stored || stored.status !== 'archived' || stored.archivedAt !== null) return
@@ -443,14 +508,14 @@ export const createStudioRepository = (
       })
     }),
     listWorkItems: (productId) => read().workItems.filter((item) => item.productId === productId),
-    saveWorkItem: (item) => mutationLock.request(() => {
+    saveWorkItem: (item) => mutationLock.request(STUDIO_MUTATION_LOCK_NAME, () => {
       const validItem = requireValid(item, isWorkItem)
       const data = read(false)
       requireProduct(data, validItem.productId)
       persistMutation({ ...data, workItems: upsertChild(data.workItems, validItem) })
     }),
     listVersions: (productId) => read().versions.filter((version) => version.productId === productId),
-    saveVersion: (version) => mutationLock.request(() => {
+    saveVersion: (version) => mutationLock.request(STUDIO_MUTATION_LOCK_NAME, () => {
       const validVersion = requireValid({ ...version, number: version.number.trim() }, isVersion)
       const data = read(false)
       requireProduct(data, validVersion.productId)
@@ -468,7 +533,10 @@ export const createStudioRepository = (
       persistMutation({ ...data, versions: upsertChild(data.versions, validVersion) })
     }),
     listDocuments: (productId) => read().documents.filter((document) => document.productId === productId),
-    saveDocument: (document, token) => mutationLock.request(() => {
+    saveDocument: (document, token) => mutationLock.request(STUDIO_MUTATION_LOCK_NAME, () => {
+      if (!isNonEmptyString(document.id) || !isNonEmptyString(document.productId)) {
+        throw new RepositoryError('VALIDATION_FAILED', 'Document identifiers are required.')
+      }
       const nameValidation = isString(document.name)
         ? validateDocumentName(document.name)
         : { valid: false as const }
@@ -511,6 +579,6 @@ export const createStudioRepository = (
       }
       persistMutation({ ...data, documents: upsertChild(data.documents, validDocument) })
     }),
-    reset: () => mutationLock.request(() => persistMutation(emptyStudio())),
+    reset: () => mutationLock.request(STUDIO_MUTATION_LOCK_NAME, () => persistMutation(emptyStudio())),
   }
 }

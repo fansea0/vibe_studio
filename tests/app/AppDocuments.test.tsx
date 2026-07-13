@@ -457,6 +457,13 @@ describe('Markdown document workspace', () => {
     await user.tab()
     expect(dialog).toHaveFocus()
 
+    const background = document.createElement('button')
+    background.textContent = 'Background action'
+    document.body.append(background)
+    background.focus()
+    expect(dialog).toHaveFocus()
+    background.remove()
+
     await act(async () => { resolveSave(); await Promise.resolve() })
     expect(screen.queryByRole('dialog', { name: '文档名称冲突' })).not.toBeInTheDocument()
   })

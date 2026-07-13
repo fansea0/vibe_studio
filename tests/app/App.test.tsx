@@ -1,4 +1,5 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { IDBFactory } from 'fake-indexeddb'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -425,7 +426,8 @@ describe('product workspace', () => {
     expect(screen.queryByRole('heading', { name: 'Failure Case' })).not.toBeInTheDocument()
   })
 
-  it('creates products through the localStorage lease fallback without Web Locks', async () => {
+  it('creates products through the IndexedDB fallback without Web Locks', async () => {
+    Object.defineProperty(window, 'indexedDB', { configurable: true, value: new IDBFactory() })
     const user = userEvent.setup()
     render(<App initialEntries={['/products']} />)
 
@@ -433,7 +435,22 @@ describe('product workspace', () => {
     await user.type(screen.getByLabelText('产品名称'), 'No Lock')
     await user.click(screen.getByRole('button', { name: '创建产品' }))
 
-    expect(await screen.findByRole('heading', { name: 'No Lock' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'No Lock' })).toBeInTheDocument()
+    }, { timeout: 2_000 })
+    Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined })
+  })
+
+  it('reports that writes are unavailable without Web Locks or IndexedDB', async () => {
+    Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined })
+    const user = userEvent.setup()
+    render(<App initialEntries={['/products']} />)
+
+    await user.click(screen.getByRole('button', { name: '新建产品' }))
+    await user.type(screen.getByLabelText('产品名称'), 'Unsafe write')
+    await user.click(screen.getByRole('button', { name: '创建产品' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('无法安全获取写入锁')
   })
 
   it('distinguishes missing and archived product routes', async () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
-import { createLocalStorageLeaseMutationLock, createStudioRepository, STUDIO_STORAGE_KEY, type DocumentMutationToken, type MutationLock, type ProductMutationToken, type StudioRepository } from '../data/studioRepository'
+import { createIndexedDbMutationLock, createStudioRepository, createUnavailableMutationLock, STUDIO_STORAGE_KEY, type DocumentMutationToken, type MutationLock, type ProductMutationToken, type StudioRepository } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import { AppShell } from './AppShell'
 import { ProductDetail } from './ProductDetail'
@@ -31,8 +31,10 @@ export default function App({ repository: injectedRepository, initialEntries }: 
   const [repository] = useState(() => {
     if (injectedRepository) return injectedRepository
     const browserLock: MutationLock = navigator.locks
-      ? { request: (operation) => navigator.locks.request('vibe-studio:documents', operation) }
-      : createLocalStorageLeaseMutationLock(localStorage)
+      ? { request: (name, operation) => navigator.locks.request(name, () => operation()) }
+      : window.indexedDB
+        ? createIndexedDbMutationLock(window.indexedDB)
+        : createUnavailableMutationLock()
     return createStudioRepository(localStorage, browserLock)
   })
   const [studioState, setStudioState] = useState(() => readStudioState(repository))
