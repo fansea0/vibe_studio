@@ -41,14 +41,14 @@ describe('TaskBoard DndContext integration', () => {
   })
   afterEach(cleanup)
 
-  it('ignores an invalid target without saving or changing the item', () => {
+  it('ignores an invalid target without saving or changing the item', async () => {
     const repository = createStudioRepository(localStorage)
     const saveWorkItem = vi.fn(repository.saveWorkItem)
     const original = repository.listWorkItems('flora').find(({ id }) => id === 'flora-reminder-timezone')
     render(<App initialEntries={['/products/flora/tasks']} repository={{ ...repository, saveWorkItem }} />)
 
     expect(capturedDragEnd).not.toBeNull()
-    act(() => capturedDragEnd?.({
+    await act(async () => capturedDragEnd?.({
       active: { id: 'flora-reminder-timezone' },
       over: { id: 'not-a-column' },
     }))
@@ -72,7 +72,7 @@ describe('TaskBoard DndContext integration', () => {
       id: 'flora-reminder-timezone',
       status: 'done',
     }))
-    expect(screen.getByRole('region', { name: '已完成 1' })).toHaveTextContent(
+    expect(await screen.findByRole('region', { name: '已完成 1' })).toHaveTextContent(
       'Reminder shifts after timezone change',
     )
     await userEvent.click(screen.getByRole('link', { name: '概览' }))

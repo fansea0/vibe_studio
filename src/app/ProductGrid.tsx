@@ -4,28 +4,31 @@ import type { Product, ProductVersion, WorkItem } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
 import { ProductDialog } from './ProductDialog'
 import { productStatusLabels } from './productPresentation'
+import { mutationErrorMessage } from './mutationError'
 
 interface ProductGridProps {
   products: Product[]
   workItems: WorkItem[]
   versions: ProductVersion[]
-  onSaveProduct: (product: Product) => void
-  onRestoreProduct: (product: Product) => void
+  onSaveProduct: (product: Product) => Promise<void>
+  onRestoreProduct: (product: Product) => Promise<void>
 }
 
 export function ProductGrid({ products, workItems, versions, onSaveProduct, onRestoreProduct }: ProductGridProps) {
   const [creating, setCreating] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [error, setError] = useState('')
+  const [restoringId, setRestoringId] = useState<string | null>(null)
   const navigate = useNavigate()
   const active = products.filter(({ archivedAt }) => archivedAt === null)
   const archived = products.filter(({ archivedAt }) => archivedAt !== null)
 
-  const restore = (product: Product) => {
+  const restore = async (product: Product) => {
+    setRestoringId(product.id)
     try {
-      onRestoreProduct(product)
+      await onRestoreProduct(product)
       setError('')
-    } catch { setError('恢复失败，请稍后重试') }
+    } catch (error) { setError(mutationErrorMessage(error, '恢复失败，请稍后重试')) } finally { setRestoringId(null) }
   }
 
   return (
@@ -44,7 +47,7 @@ export function ProductGrid({ products, workItems, versions, onSaveProduct, onRe
         })}
       </section>
       {active.length === 0 && <div className="empty-card"><h2>还没有活跃产品</h2><p>新建产品，或从归档区恢复已有产品。</p></div>}
-      {archived.length > 0 && <section className="archive-section"><button className="text-button" aria-label={showArchived ? '收起已归档产品' : '查看已归档产品'} onClick={() => setShowArchived((shown) => !shown)}>{showArchived ? '收起已归档产品' : '查看已归档产品'}（{archived.length}）</button>{showArchived && <div className="archived-grid">{archived.map((product) => <article className="archived-card" key={product.id}><span className="product-icon">{product.icon}</span><div><div className="archived-title"><h3>{product.name}</h3><span className="status status-archived">已归档</span></div><p>{product.description}</p></div><button className="secondary" onClick={() => restore(product)} aria-label={`恢复 ${product.name}`}>恢复</button></article>)}</div>}</section>}
+      {archived.length > 0 && <section className="archive-section"><button className="text-button" aria-label={showArchived ? '收起已归档产品' : '查看已归档产品'} onClick={() => setShowArchived((shown) => !shown)}>{showArchived ? '收起已归档产品' : '查看已归档产品'}（{archived.length}）</button>{showArchived && <div className="archived-grid">{archived.map((product) => <article className="archived-card" key={product.id}><span className="product-icon">{product.icon}</span><div><div className="archived-title"><h3>{product.name}</h3><span className="status status-archived">已归档</span></div><p>{product.description}</p></div><button className="secondary" onClick={() => void restore(product)} aria-label={`恢复 ${product.name}`} disabled={restoringId !== null}>恢复</button></article>)}</div>}</section>}
       {creating && <ProductDialog products={products} onSaveProduct={onSaveProduct} onClose={() => setCreating(false)} onCreated={(product) => { setCreating(false); navigate(`/products/${product.id}`) }} />}
     </>
   )

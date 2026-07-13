@@ -2,14 +2,16 @@ import { Component, useEffect, useMemo, useRef, useState, type ChangeEvent, type
 import ReactMarkdown from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 
+import type { DocumentMutationToken } from '../data/studioRepository'
 import type { MarkdownDocument } from '../domain/models'
 import { MAX_MARKDOWN_FILE_BYTES, normalizeDocumentName, validateDocumentName } from '../domain/documentName'
 import { Modal } from './Modal'
+import { mutationErrorMessage } from './mutationError'
 
 interface DocumentWorkspaceProps {
   productId: string
   documents: MarkdownDocument[]
-  onSaveDocument: (document: MarkdownDocument, expectedUpdatedAt?: string) => Promise<void>
+  onSaveDocument: (document: MarkdownDocument, token: DocumentMutationToken) => Promise<void>
 }
 
 interface PendingDocument {
@@ -82,9 +84,12 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
     ? documents.find((document) => normalizeDocumentName(document.name) === normalizeDocumentName(pending.name)) ?? null
     : null
 
-  useEffect(() => () => {
-    mounted.current = false
-    uploadGeneration.current += 1
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      uploadGeneration.current += 1
+    }
   }, [])
 
   useEffect(() => {
@@ -96,10 +101,10 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
   const save = async (
     document: MarkdownDocument,
     pendingOnDuplicate?: PendingDocument,
-    expectedUpdatedAt?: string,
+    expectedUpdatedAt: string | null = null,
   ): Promise<boolean> => {
     try {
-      await onSaveDocument(document, expectedUpdatedAt)
+      await onSaveDocument(document, { expectedUpdatedAt })
       if (!mounted.current) return true
       setSelectedId(document.id)
       setError('')
@@ -113,7 +118,7 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
         if (pendingOnDuplicate) setPending(pendingOnDuplicate)
         setError(documentConflictMessage)
       } else {
-        setError('保存失败，请稍后重试')
+        setError(mutationErrorMessage(saveError, '保存失败，请稍后重试'))
       }
       return false
     }
@@ -255,7 +260,7 @@ export function DocumentWorkspace({ productId, documents, onSaveDocument }: Docu
         </div>
       )}
       {pending && (
-        <Modal title="文档名称冲突" onClose={closeConflict} className="confirm-dialog">
+        <Modal title="文档名称冲突" onClose={closeConflict} closeDisabled={busy} className="confirm-dialog">
           <p>当前产品中已存在同名文档“{pendingExisting?.name ?? pending.name}”。请选择处理方式。</p>
           {error && <p role="alert" className="feedback error">{error}</p>}
           <div className="dialog-actions">

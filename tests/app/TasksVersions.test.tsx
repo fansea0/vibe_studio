@@ -214,7 +214,7 @@ describe('manual versions', () => {
     const externalRepository = createStudioRepository(localStorage)
     renderApp('/products/flora/versions', repository)
     const dialog = await openCreateVersion()
-    externalRepository.saveVersion({
+    await externalRepository.saveVersion({
       id: 'external-stale-version',
       productId: 'flora',
       number: 'stale-release',

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -142,7 +142,7 @@ describe('product workspace', () => {
   it('restores an archived product from the overview', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    repository.saveProduct({
+    await repository.saveProduct({
       ...flora,
       status: 'beta',
       archivedAt: '2026-07-13T08:00:00.000Z',
@@ -189,7 +189,7 @@ describe('product workspace', () => {
     renderApp('/products', repository)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    repository.saveProduct({ ...flora, name: 'Flora Cross Tab' })
+    await repository.saveProduct({ ...flora, name: 'Flora Cross Tab' })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(await screen.findByRole('link', { name: /Flora Cross Tab，打开产品详情/ })).toBeInTheDocument()
@@ -198,7 +198,7 @@ describe('product workspace', () => {
   it('restores a legacy archived product into a valid developing lifecycle', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    repository.saveProduct({ ...flora, status: 'archived', archivedAt: new Date().toISOString() })
+    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: new Date().toISOString() })
     const user = userEvent.setup()
     renderApp('/products', repository)
 
@@ -212,34 +212,31 @@ describe('product workspace', () => {
     expect(within(screen.getByRole('region', { name: '活跃产品' })).getByRole('link', { name: /Flora/ })).toBeInTheDocument()
   })
 
-  it('migrates a legacy active archived status when loading the App boundary', () => {
+  it('migrates a legacy active archived status when loading the App boundary', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
+    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
 
     renderApp('/products', repository)
 
-    expect(repository.listProducts().find(({ id }) => id === 'flora')).toMatchObject({
-      status: 'developing',
-      archivedAt: null,
-    })
+    await waitFor(() => expect(repository.listProducts().find(({ id }) => id === 'flora')).toMatchObject({ status: 'developing', archivedAt: null }))
     expect(screen.getByRole('link', { name: /Flora，打开产品详情/ })).toBeInTheDocument()
   })
 
-  it('keeps a safe view and reports a failed legacy migration', () => {
+  it('keeps a safe view and reports a failed legacy migration', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
+    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
     const failingRepository = {
       ...repository,
-      saveProduct: () => {
+      saveProduct: async () => {
         throw new RepositoryError('PERSISTENCE_FAILED', 'migration failed')
       },
     }
 
     renderApp('/products', failingRepository)
 
-    expect(screen.getByRole('alert')).toHaveTextContent('旧版产品数据迁移失败')
+    expect(await screen.findByRole('alert')).toHaveTextContent('旧版产品数据迁移失败')
     expect(within(screen.getByRole('link', { name: /Flora，打开产品详情/ })).getByText('开发中')).toBeInTheDocument()
   })
 
@@ -252,7 +249,7 @@ describe('product workspace', () => {
     await user.type(name, 'Flora Draft')
     const resume = repository.listProducts().find(({ id }) => id === 'resume-genius')!
 
-    repository.saveProduct({ ...resume, name: 'Resume External', updatedAt: new Date().toISOString() })
+    await repository.saveProduct({ ...resume, name: 'Resume External', updatedAt: new Date().toISOString() })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(await screen.findByRole('link', { name: /Resume External/ })).toBeInTheDocument()
@@ -269,7 +266,7 @@ describe('product workspace', () => {
     await user.type(name, 'Flora Draft')
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T09:00:00.000Z' })
+    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T09:00:00.000Z' })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(name).toHaveValue('Flora Draft')
@@ -287,7 +284,7 @@ describe('product workspace', () => {
     expect(screen.getByText('请输入完成度')).toBeInTheDocument()
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T10:00:00.000Z' })
+    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T10:00:00.000Z' })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
     await user.click(await screen.findByRole('button', { name: '加载外部版本' }))
 
@@ -303,7 +300,7 @@ describe('product workspace', () => {
     expect(screen.getByRole('status')).toHaveTextContent('设置已保存')
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T11:00:00.000Z' })
+    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T11:00:00.000Z' })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(await screen.findByLabelText('产品名称')).toHaveValue('Flora External')
@@ -354,10 +351,10 @@ describe('product workspace', () => {
     expect(input).toHaveAttribute('aria-describedby', error.id)
   })
 
-  it('does not render unsafe persisted app URLs', () => {
+  it('does not render unsafe persisted app URLs', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    repository.saveProduct({ ...flora, appUrl: 'javascript:alert(1)' })
+    await repository.saveProduct({ ...flora, appUrl: 'javascript:alert(1)' })
 
     renderApp('/products/flora', repository)
 
@@ -394,6 +391,17 @@ describe('product workspace', () => {
     expect(screen.queryByRole('heading', { name: 'Failure Case' })).not.toBeInTheDocument()
   })
 
+  it('explains when safe cross-window mutation locking is unavailable', async () => {
+    const user = userEvent.setup()
+    render(<App initialEntries={['/products']} />)
+
+    await user.click(screen.getByRole('button', { name: '新建产品' }))
+    await user.type(screen.getByLabelText('产品名称'), 'No Lock')
+    await user.click(screen.getByRole('button', { name: '创建产品' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('当前浏览器不支持安全的跨窗口写入')
+  })
+
   it('distinguishes missing and archived product routes', async () => {
     const { unmount } = renderApp('/products/not-here')
     expect(screen.getByRole('heading', { name: '产品不存在' })).toBeInTheDocument()
@@ -401,7 +409,7 @@ describe('product workspace', () => {
 
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    repository.saveProduct({ ...flora, status: 'beta', archivedAt: new Date().toISOString() })
+    await repository.saveProduct({ ...flora, status: 'beta', archivedAt: new Date().toISOString() })
     renderApp('/products/flora', repository)
     expect(screen.getByRole('heading', { name: '产品已归档' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '恢复产品' })).toBeInTheDocument()

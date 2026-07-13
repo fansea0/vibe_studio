@@ -6,11 +6,12 @@ import { Modal } from './Modal'
 import { dateValueToIso, isValidDateValue, isoToDateValue } from './dateForm'
 import { priorityLabels, priorities, workItemStatusLabels, workItemStatuses, workItemTypeLabels, workItemTypes } from './workItemPresentation'
 import { resolveWorkItemStatus } from './workItemTransition'
+import { mutationErrorMessage } from './mutationError'
 
 interface TaskBoardProps {
   productId: string
   items: WorkItem[]
-  onSaveWorkItem: (item: WorkItem) => void
+  onSaveWorkItem: (item: WorkItem) => Promise<void>
 }
 
 type Filter = 'all' | WorkItemType
@@ -19,15 +20,19 @@ export function TaskBoard({ productId, items, onSaveWorkItem }: TaskBoardProps) 
   const [filter, setFilter] = useState<Filter>('all')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const visibleItems = filter === 'all' ? items : items.filter(({ type }) => type === filter)
 
-  const saveStatus = (item: WorkItem, status: WorkItemStatus) => {
-    if (item.status === status) return
+  const saveStatus = async (item: WorkItem, status: WorkItemStatus) => {
+    if (item.status === status || busy) return
+    setBusy(true)
     try {
-      onSaveWorkItem({ ...item, status, updatedAt: new Date().toISOString() })
+      await onSaveWorkItem({ ...item, status, updatedAt: new Date().toISOString() })
       setError('')
-    } catch {
-      setError('保存失败，请稍后重试')
+    } catch (error) {
+      setError(mutationErrorMessage(error, '保存失败，请稍后重试'))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -35,14 +40,14 @@ export function TaskBoard({ productId, items, onSaveWorkItem }: TaskBoardProps) 
     const item = items.find(({ id }) => id === String(active.id))
     if (item === undefined) return
     const nextStatus = resolveWorkItemStatus(item.status, over === null ? null : String(over.id))
-    if (nextStatus !== null) saveStatus(item, nextStatus)
+    if (nextStatus !== null) void saveStatus(item, nextStatus)
   }
 
   return (
     <section className="work-stack" aria-labelledby="task-board-title">
       <div className="section-heading work-heading">
         <div><h2 id="task-board-title">需求与 Bug</h2><p>按状态跟进产品工作项。</p></div>
-        <button aria-label="新建任务" onClick={() => setCreating(true)}>＋ 新建任务</button>
+        <button aria-label="新建任务" onClick={() => setCreating(true)} disabled={busy}>＋ 新建任务</button>
       </div>
       <div className="filter-bar" aria-label="任务筛选">
         {([['all', '全部'], ['requirement', '需求'], ['bug', 'Bug']] as const).map(([value, label]) =>
@@ -87,13 +92,14 @@ function TaskCard({ item, onSaveStatus }: { item: WorkItem; onSaveStatus: (item:
   </article>
 }
 
-function TaskDialog({ productId, onSave, onClose }: { productId: string; onSave: (item: WorkItem) => void; onClose: () => void }) {
+function TaskDialog({ productId, onSave, onClose }: { productId: string; onSave: (item: WorkItem) => Promise<void>; onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [type, setType] = useState<WorkItemType>('requirement')
   const [priority, setPriority] = useState<Priority>('medium')
   const [dueDate, setDueDate] = useState('')
   const [errors, setErrors] = useState<{ title?: string; dueDate?: string; save?: string }>({})
-  const submit = (event: FormEvent) => {
+  const [busy, setBusy] = useState(false)
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
     const nextErrors = {
       ...(!title.trim() ? { title: '请输入标题' } : {}),
@@ -103,14 +109,15 @@ function TaskDialog({ productId, onSave, onClose }: { productId: string; onSave:
     if (Object.keys(nextErrors).length > 0) return
     const now = new Date().toISOString()
     const item: WorkItem = { id: `${productId}-${crypto.randomUUID()}`, productId, title: title.trim(), type, priority, dueDate: dueDate ? dateValueToIso(dueDate) : null, status: 'todo', createdAt: now, updatedAt: now }
-    try { onSave(item); onClose() } catch { setErrors({ save: '保存失败，请稍后重试' }) }
+    setBusy(true)
+    try { await onSave(item); onClose() } catch (error) { setErrors({ save: mutationErrorMessage(error, '保存失败，请稍后重试') }) } finally { setBusy(false) }
   }
-  return <Modal title="新建任务" onClose={onClose}><form onSubmit={submit} noValidate>
+  return <Modal title="新建任务" onClose={onClose} closeDisabled={busy}><form onSubmit={submit} noValidate>
     <div className="field"><label htmlFor="work-item-title">标题</label><input id="work-item-title" value={title} onChange={(event) => setTitle(event.target.value)} aria-invalid={errors.title ? true : undefined} aria-describedby={errors.title ? 'work-item-title-error' : undefined} />{errors.title && <span id="work-item-title-error" role="alert" className="field-error">{errors.title}</span>}</div>
     <div className="form-grid"><label className="field">类型<select value={type} onChange={(event) => setType(event.target.value as WorkItemType)}>{workItemTypes.map((value) => <option key={value} value={value}>{workItemTypeLabels[value]}</option>)}</select></label>
     <label className="field">优先级<select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{priorities.map((value) => <option key={value} value={value}>{priorityLabels[value]}</option>)}</select></label>
     <div className="field span-2"><label htmlFor="work-item-due-date">截止日期</label><input id="work-item-due-date" placeholder="YYYY-MM-DD" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-invalid={errors.dueDate ? true : undefined} aria-describedby={errors.dueDate ? 'work-item-due-date-error' : undefined} />{errors.dueDate && <span id="work-item-due-date-error" role="alert" className="field-error">{errors.dueDate}</span>}</div></div>
     {errors.save && <p role="alert" className="feedback error">{errors.save}</p>}
-    <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>取消</button><button type="submit">创建任务</button></div>
+    <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>取消</button><button type="submit" disabled={busy}>创建任务</button></div>
   </form></Modal>
 }

@@ -1,4 +1,5 @@
 export const MAX_MARKDOWN_FILE_BYTES = 512 * 1024
+export const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).byteLength
 
 const markdownExtension = /\.(?:md|markdown)$/i
 const hasControlCharacter = (value: string): boolean =>

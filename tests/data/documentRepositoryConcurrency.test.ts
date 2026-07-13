@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { createStudioRepository, type DocumentLock } from '../../src/data/studioRepository'
+import { createStudioRepository, createUnavailableMutationLock, type MutationLock } from '../../src/data/studioRepository'
 import type { MarkdownDocument } from '../../src/domain/models'
+import { seedStudio } from '../../src/data/seedStudio'
 
 const candidate = (id: string, name: string, content = '# Content'): MarkdownDocument => ({
   id,
@@ -12,7 +13,7 @@ const candidate = (id: string, name: string, content = '# Content'): MarkdownDoc
   updatedAt: '2020-01-01T00:00:00.000Z',
 })
 
-class ControlledLock implements DocumentLock {
+class ControlledLock implements MutationLock {
   private readonly queued: Array<{
     operation: () => Promise<unknown> | unknown
     resolve: (value: unknown) => void
@@ -45,8 +46,8 @@ describe('document repository concurrency', () => {
     const lock = new ControlledLock()
     const repository = createStudioRepository(localStorage, lock)
 
-    const first = repository.saveDocument(candidate('first', 'first.md'))
-    const second = repository.saveDocument(candidate('second', 'second.md'))
+    const first = repository.saveDocument(candidate('first', 'first.md'), { expectedUpdatedAt: null })
+    const second = repository.saveDocument(candidate('second', 'second.md'), { expectedUpdatedAt: null })
     expect(lock.size).toBe(2)
 
     await lock.releaseNext()
@@ -63,8 +64,8 @@ describe('document repository concurrency', () => {
   it('rejects the second of two concurrently started normalized names', async () => {
     const lock = new ControlledLock()
     const repository = createStudioRepository(localStorage, lock)
-    const first = repository.saveDocument(candidate('first', 'café.md'))
-    const second = repository.saveDocument(candidate('second', ' CAFE\u0301.MD '))
+    const first = repository.saveDocument(candidate('first', 'café.md'), { expectedUpdatedAt: null })
+    const second = repository.saveDocument(candidate('second', ' CAFE\u0301.MD '), { expectedUpdatedAt: null })
 
     await lock.releaseNext()
     await first
@@ -78,13 +79,13 @@ describe('document repository concurrency', () => {
 
   it('generates valid timestamps and maintains lifecycle on same-id updates', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(candidate('lifecycle', 'lifecycle.md'))
+    await repository.saveDocument(candidate('lifecycle', 'lifecycle.md'), { expectedUpdatedAt: null })
     const created = repository.listDocuments('flora').find(({ id }) => id === 'lifecycle')!
     expect(Date.parse(created.createdAt)).toBeLessThanOrEqual(Date.parse(created.updatedAt))
 
     await repository.saveDocument(
       { ...created, content: '# Updated', createdAt: '2040-01-01T00:00:00.000Z' },
-      created.updatedAt,
+      { expectedUpdatedAt: created.updatedAt },
     )
     const updated = repository.listDocuments('flora').find(({ id }) => id === 'lifecycle')!
     expect(updated.createdAt).toBe(created.createdAt)
@@ -93,15 +94,71 @@ describe('document repository concurrency', () => {
 
   it('rejects a stale overwrite compare token without changing the stored document', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(candidate('stale', 'stale.md', '# Original'))
+    await repository.saveDocument(candidate('stale', 'stale.md', '# Original'), { expectedUpdatedAt: null })
     const original = repository.listDocuments('flora').find(({ id }) => id === 'stale')!
-    await repository.saveDocument({ ...original, content: '# Current' }, original.updatedAt)
+    await repository.saveDocument({ ...original, content: '# Current' }, { expectedUpdatedAt: original.updatedAt })
     const current = repository.listDocuments('flora').find(({ id }) => id === 'stale')!
 
     await expect(repository.saveDocument(
       { ...original, content: '# Stale writer' },
-      original.updatedAt,
+      { expectedUpdatedAt: original.updatedAt },
     )).rejects.toMatchObject({ code: 'DOCUMENT_CONFLICT' })
     expect(repository.listDocuments('flora').find(({ id }) => id === 'stale')).toEqual(current)
+  })
+
+  it('serializes document, product, task, version, and reset mutations through one lock', async () => {
+    const lock = new ControlledLock()
+    const repository = createStudioRepository(localStorage, lock)
+    const product = repository.listProducts().find(({ id }) => id === 'flora')!
+    const documentSave = repository.saveDocument(candidate('mixed', 'mixed.md'), { expectedUpdatedAt: null })
+    const productSave = repository.saveProduct({ ...product, name: 'Locked Flora' })
+    const taskSave = repository.saveWorkItem({
+      id: 'locked-task', productId: 'flora', type: 'bug', title: 'Locked', priority: 'medium',
+      dueDate: null, status: 'todo', createdAt: product.createdAt, updatedAt: product.updatedAt,
+    })
+    const versionSave = repository.saveVersion({
+      id: 'locked-version', productId: 'flora', number: '9.9.9', status: 'planned', releasedAt: null,
+      notes: '', createdAt: product.createdAt, updatedAt: product.updatedAt,
+    })
+    expect(lock.size).toBe(4)
+    for (const operation of [documentSave, productSave, taskSave, versionSave]) {
+      await lock.releaseNext()
+      await operation
+    }
+    expect(repository.readSnapshot()).toMatchObject({
+      products: expect.arrayContaining([expect.objectContaining({ id: 'flora', name: 'Locked Flora' })]),
+      documents: expect.arrayContaining([expect.objectContaining({ id: 'mixed' })]),
+      workItems: expect.arrayContaining([expect.objectContaining({ id: 'locked-task' })]),
+      versions: expect.arrayContaining([expect.objectContaining({ id: 'locked-version' })]),
+    })
+
+    const lateSave = repository.saveProduct({ ...product, name: 'Will reset' })
+    const reset = repository.reset()
+    await lock.releaseNext(); await lateSave
+    await lock.releaseNext(); await reset
+    expect(repository.readSnapshot()).toEqual({ products: [], workItems: [], versions: [], documents: [] })
+  })
+
+  it('surfaces a typed error when the mutation lock is unavailable', async () => {
+    const repository = createStudioRepository(localStorage, createUnavailableMutationLock())
+
+    await expect(repository.saveProduct(repository.listProducts()[0]!)).rejects.toMatchObject({
+      code: 'LOCK_UNAVAILABLE',
+    })
+  })
+
+  it('serializes canonical salvage write-back through the mutation lock', async () => {
+    localStorage.setItem('vibe-studio:v1', JSON.stringify({
+      ...seedStudio,
+      documents: [{ ...candidate('canonical-lock', ' guide.md '), createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
+    }))
+    const lock = new ControlledLock()
+    const repository = createStudioRepository(localStorage, lock)
+
+    expect(repository.listDocuments('flora')[0]?.name).toBe('guide.md')
+    expect(lock.size).toBe(1)
+    expect(JSON.parse(localStorage.getItem('vibe-studio:v1') ?? '').documents[0].name).toBe(' guide.md ')
+    await lock.releaseNext()
+    expect(JSON.parse(localStorage.getItem('vibe-studio:v1') ?? '').documents[0].name).toBe('guide.md')
   })
 })

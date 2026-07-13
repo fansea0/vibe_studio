@@ -1,5 +1,5 @@
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
-import { normalizeDocumentName, validateDocumentName } from '../domain/documentName'
+import { MAX_MARKDOWN_FILE_BYTES, normalizeDocumentName, utf8ByteLength, validateDocumentName } from '../domain/documentName'
 import { seedStudio, type StudioData } from './seedStudio'
 
 export const STUDIO_STORAGE_KEY = 'vibe-studio:v1'
@@ -113,8 +113,10 @@ const isDocument = (value: unknown): value is MarkdownDocument =>
   isString(value.name) &&
   validateDocumentName(value.name).valid &&
   isString(value.content) &&
+  utf8ByteLength(value.content) <= MAX_MARKDOWN_FILE_BYTES &&
   isIsoDate(value.createdAt) &&
-  isIsoDate(value.updatedAt)
+  isIsoDate(value.updatedAt) &&
+  Date.parse(value.createdAt) <= Date.parse(value.updatedAt)
 
 const validRecords = <T>(value: unknown, validate: (record: unknown) => record is T): T[] => {
   if (!Array.isArray(value)) return []
@@ -145,6 +147,17 @@ const uniqueDocuments = (documents: MarkdownDocument[]): MarkdownDocument[] => {
   return documents.filter((document) => retained.has(document))
 }
 
+const canonicalDocuments = (value: unknown): MarkdownDocument[] => {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((candidate) => {
+    if (!isRecord(candidate) || !isString(candidate.name)) return []
+    const validation = validateDocumentName(candidate.name)
+    if (!validation.valid) return []
+    const canonical = { ...candidate, name: validation.name }
+    return isDocument(canonical) ? [canonical] : []
+  })
+}
+
 const sanitizeStudio = (value: unknown): StudioData | null => {
   if (!isRecord(value)) return null
 
@@ -158,7 +171,7 @@ const sanitizeStudio = (value: unknown): StudioData | null => {
     workItems: validRecords(value.workItems, isWorkItem).filter(belongsToProduct),
     versions: validRecords(value.versions, isVersion).filter(belongsToProduct),
     documents: uniqueDocuments(
-      validRecords(value.documents, isDocument).filter(belongsToProduct),
+      canonicalDocuments(value.documents).filter(belongsToProduct),
     ),
   }
 }
@@ -189,6 +202,7 @@ export type RepositoryErrorCode =
   | 'DUPLICATE_VERSION'
   | 'DUPLICATE_DOCUMENT'
   | 'DOCUMENT_CONFLICT'
+  | 'LOCK_UNAVAILABLE'
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode
@@ -222,44 +236,46 @@ const requireProduct = (data: StudioData, productId: string): void => {
 export interface StudioRepository {
   readSnapshot(): StudioData
   listProducts(): Product[]
-  saveProduct(product: Product): void
+  saveProduct(product: Product): Promise<void>
   listWorkItems(productId: string): WorkItem[]
-  saveWorkItem(item: WorkItem): void
+  saveWorkItem(item: WorkItem): Promise<void>
   listVersions(productId: string): ProductVersion[]
-  saveVersion(version: ProductVersion): void
+  saveVersion(version: ProductVersion): Promise<void>
   listDocuments(productId: string): MarkdownDocument[]
-  saveDocument(document: MarkdownDocument, expectedUpdatedAt?: string): Promise<void>
-  reset(): void
+  saveDocument(document: MarkdownDocument, token: DocumentMutationToken): Promise<void>
+  reset(): Promise<void>
 }
 
-export interface DocumentLock {
+export interface DocumentMutationToken { expectedUpdatedAt: string | null }
+
+export interface MutationLock {
   request<T>(operation: () => Promise<T> | T): Promise<T>
 }
 
-const storageDocumentQueues = new WeakMap<Storage, Promise<void>>()
+const storageMutationQueues = new WeakMap<Storage, Promise<void>>()
 
-const createStorageDocumentLock = (storage: Storage): DocumentLock => ({
+/** In-process serialization for tests and explicitly injected non-browser storage only. */
+const createStorageMutationLock = (storage: Storage): MutationLock => ({
   request: <T,>(operation: () => Promise<T> | T): Promise<T> => {
-    const previous = storageDocumentQueues.get(storage) ?? Promise.resolve()
+    const previous = storageMutationQueues.get(storage) ?? Promise.resolve()
     const result = previous.catch(() => undefined).then(operation)
-    storageDocumentQueues.set(storage, result.then(() => undefined, () => undefined))
+    storageMutationQueues.set(storage, result.then(() => undefined, () => undefined))
     return result
+  },
+})
+
+export const createUnavailableMutationLock = (): MutationLock => ({
+  request: async () => {
+    throw new RepositoryError('LOCK_UNAVAILABLE', 'Cross-tab mutation locking is unavailable.')
   },
 })
 
 export const createStudioRepository = (
   storage: Storage,
-  documentLock: DocumentLock = createStorageDocumentLock(storage),
+  mutationLock: MutationLock = createStorageMutationLock(storage),
 ): StudioRepository => {
   let lastKnownGood = cloneSeed()
-
-  const tryRecoveryWrite = (data: StudioData): void => {
-    try {
-      storage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(data))
-    } catch {
-      // Reads remain available from the in-memory snapshot when persistence is unavailable.
-    }
-  }
+  let recoveryPending = false
 
   const persistMutation = (data: StudioData): void => {
     const sanitized = sanitizeStudio(data) ?? emptyStudio()
@@ -275,6 +291,21 @@ export const createStudioRepository = (
     lastKnownGood = cloneStudio(sanitized)
   }
 
+  const scheduleRecovery = (fallback: StudioData): void => {
+    if (recoveryPending) return
+    recoveryPending = true
+    void mutationLock.request(() => {
+      let payload: string | null
+      try { payload = storage.getItem(STUDIO_STORAGE_KEY) } catch { return }
+      if (payload === null) return
+      let recovered = fallback
+      try { recovered = sanitizeStudio(JSON.parse(payload)) ?? fallback } catch { /* use fallback */ }
+      if (JSON.stringify(recovered) !== payload) persistMutation(recovered)
+    }).catch(() => {
+      // Reads remain available even when repair persistence or locking is unavailable.
+    }).finally(() => { recoveryPending = false })
+  }
+
   const read = (commitSnapshot = true): StudioData => {
     let payload: string | null
     try {
@@ -287,7 +318,6 @@ export const createStudioRepository = (
       const seeded = cloneSeed()
       if (commitSnapshot) {
         lastKnownGood = cloneStudio(seeded)
-        tryRecoveryWrite(seeded)
       }
       return cloneStudio(seeded)
     }
@@ -297,20 +327,20 @@ export const createStudioRepository = (
       parsed = JSON.parse(payload)
     } catch {
       const recovered = cloneStudio(lastKnownGood)
-      if (commitSnapshot) tryRecoveryWrite(recovered)
+      if (commitSnapshot) scheduleRecovery(recovered)
       return recovered
     }
 
     const sanitized = sanitizeStudio(parsed)
     if (sanitized === null) {
       const recovered = cloneStudio(lastKnownGood)
-      if (commitSnapshot) tryRecoveryWrite(recovered)
+      if (commitSnapshot) scheduleRecovery(recovered)
       return recovered
     }
 
     if (commitSnapshot) {
       lastKnownGood = cloneStudio(sanitized)
-      if (JSON.stringify(sanitized) !== payload) tryRecoveryWrite(sanitized)
+      if (JSON.stringify(sanitized) !== payload) scheduleRecovery(sanitized)
     }
     return cloneStudio(sanitized)
   }
@@ -318,20 +348,20 @@ export const createStudioRepository = (
   return {
     readSnapshot: () => read(),
     listProducts: () => read().products,
-    saveProduct: (product) => {
+    saveProduct: (product) => mutationLock.request(() => {
       const validProduct = requireValid(product, isProduct)
       const data = read(false)
       persistMutation({ ...data, products: upsertProduct(data.products, validProduct) })
-    },
+    }),
     listWorkItems: (productId) => read().workItems.filter((item) => item.productId === productId),
-    saveWorkItem: (item) => {
+    saveWorkItem: (item) => mutationLock.request(() => {
       const validItem = requireValid(item, isWorkItem)
       const data = read(false)
       requireProduct(data, validItem.productId)
       persistMutation({ ...data, workItems: upsertChild(data.workItems, validItem) })
-    },
+    }),
     listVersions: (productId) => read().versions.filter((version) => version.productId === productId),
-    saveVersion: (version) => {
+    saveVersion: (version) => mutationLock.request(() => {
       const validVersion = requireValid({ ...version, number: version.number.trim() }, isVersion)
       const data = read(false)
       requireProduct(data, validVersion.productId)
@@ -347,9 +377,9 @@ export const createStudioRepository = (
         )
       }
       persistMutation({ ...data, versions: upsertChild(data.versions, validVersion) })
-    },
+    }),
     listDocuments: (productId) => read().documents.filter((document) => document.productId === productId),
-    saveDocument: (document, expectedUpdatedAt) => documentLock.request(() => {
+    saveDocument: (document, token) => mutationLock.request(() => {
       const nameValidation = isString(document.name)
         ? validateDocumentName(document.name)
         : { valid: false as const }
@@ -358,7 +388,13 @@ export const createStudioRepository = (
       const stored = data.documents.find(
         (candidate) => candidate.productId === document.productId && candidate.id === document.id,
       )
-      if (expectedUpdatedAt !== undefined && stored?.updatedAt !== expectedUpdatedAt) {
+      if (!isRecord(token) || !(token.expectedUpdatedAt === null || isString(token.expectedUpdatedAt))) {
+        throw new RepositoryError('VALIDATION_FAILED', 'Document mutation token is required.')
+      }
+      if (
+        (token.expectedUpdatedAt === null && stored !== undefined) ||
+        (token.expectedUpdatedAt !== null && stored?.updatedAt !== token.expectedUpdatedAt)
+      ) {
         throw new RepositoryError('DOCUMENT_CONFLICT', 'Document changed since it was loaded.')
       }
       const now = new Date().toISOString()
@@ -386,6 +422,6 @@ export const createStudioRepository = (
       }
       persistMutation({ ...data, documents: upsertChild(data.documents, validDocument) })
     }),
-    reset: () => persistMutation(emptyStudio()),
+    reset: () => mutationLock.request(() => persistMutation(emptyStudio())),
   }
 }

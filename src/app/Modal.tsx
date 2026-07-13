@@ -6,6 +6,7 @@ interface ModalProps {
   onClose: () => void
   className?: string
   showCloseButton?: boolean
+  closeDisabled?: boolean
 }
 
 const focusableSelector = [
@@ -17,7 +18,7 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
-export function Modal({ title, children, onClose, className = '', showCloseButton = true }: ModalProps) {
+export function Modal({ title, children, onClose, className = '', showCloseButton = true, closeDisabled = false }: ModalProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLElement>(null)
 
@@ -41,7 +42,7 @@ export function Modal({ title, children, onClose, className = '', showCloseButto
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault()
-      onClose()
+      if (!closeDisabled) onClose()
       return
     }
     if (event.key !== 'Tab') return
@@ -63,7 +64,7 @@ export function Modal({ title, children, onClose, className = '', showCloseButto
       <section ref={dialogRef} className={`dialog ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={handleKeyDown}>
         <div className="dialog-heading">
           <h2 id={titleId}>{title}</h2>
-          {showCloseButton && <button type="button" className="icon-button" onClick={onClose} aria-label="关闭" data-autofocus>×</button>}
+          {showCloseButton && <button type="button" className="icon-button" onClick={onClose} aria-label="关闭" data-autofocus disabled={closeDisabled}>×</button>}
         </div>
         {children}
       </section>

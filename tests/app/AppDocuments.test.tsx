@@ -1,8 +1,10 @@
+import { StrictMode } from 'react'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../../src/app/App'
+import { DocumentWorkspace } from '../../src/app/DocumentWorkspace'
 import { createStudioRepository, RepositoryError } from '../../src/data/studioRepository'
 import type { MarkdownDocument } from '../../src/domain/models'
 
@@ -101,7 +103,7 @@ describe('Markdown document workspace', () => {
   it('overwrites a same-name document while retaining identity and creation time', async () => {
     const repository = createStudioRepository(localStorage)
     const existing = storedDocument()
-    await repository.saveDocument(existing)
+    await repository.saveDocument(existing, { expectedUpdatedAt: null })
     const storedCreatedAt = repository.listDocuments('flora').find(({ id }) => id === existing.id)!.createdAt
     const user = userEvent.setup()
     renderDocuments(repository)
@@ -124,8 +126,8 @@ describe('Markdown document workspace', () => {
 
   it('saves same-name uploads as readable, incrementing copies', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(storedDocument())
-    await repository.saveDocument(storedDocument({ id: 'copy-one', name: 'guide-副本.md' }))
+    await repository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
+    await repository.saveDocument(storedDocument({ id: 'copy-one', name: 'guide-副本.md' }), { expectedUpdatedAt: null })
     const user = userEvent.setup()
     renderDocuments(repository)
 
@@ -140,7 +142,7 @@ describe('Markdown document workspace', () => {
 
   it('cancels a same-name upload without changing stored documents', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
     const before = repository.listDocuments('flora')
     const user = userEvent.setup()
     renderDocuments(repository)
@@ -155,7 +157,7 @@ describe('Markdown document workspace', () => {
 
   it('reports file read failures and retains the existing document', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
     const before = repository.listDocuments('flora')
     const failedFile = markdownFile('broken.md', '', async () => { throw new Error('read failed') })
     const user = userEvent.setup()
@@ -170,7 +172,7 @@ describe('Markdown document workspace', () => {
 
   it('reports repository failures and retains the existing document and preview', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
     const before = repository.listDocuments('flora')
     const failingRepository = {
       ...repository,
@@ -188,7 +190,7 @@ describe('Markdown document workspace', () => {
 
   it('keeps the conflict dialog open with one alert when overwrite persistence fails', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
     const before = repository.listDocuments('flora')
     const failingRepository = {
       ...repository,
@@ -217,7 +219,7 @@ describe('Markdown document workspace', () => {
       name: 'external.md',
       content: '# External document',
       updatedAt: '2026-07-13T09:00:00.000Z',
-    }))
+    }), { expectedUpdatedAt: null })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(await screen.findByRole('button', { name: /external.md/ })).toBeInTheDocument()
@@ -264,7 +266,7 @@ describe('Markdown document workspace', () => {
 
   it('keeps pending content after a concurrent copy-name collision and recomputes the next copy', async () => {
     const setupRepository = createStudioRepository(localStorage)
-    await setupRepository.saveDocument(storedDocument())
+    await setupRepository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
     const firstRepository = createStudioRepository(localStorage)
     const staleRepository = createStudioRepository(localStorage)
     const first = renderDocuments(firstRepository)
@@ -305,7 +307,7 @@ describe('Markdown document workspace', () => {
 
   it('refreshes a stale overwrite token while preserving pending content', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(storedDocument())
+    await repository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
     const conflictingRepository = {
       ...repository,
       saveDocument: async () => { throw new RepositoryError('DOCUMENT_CONFLICT', 'stale token') },
@@ -328,8 +330,8 @@ describe('Markdown document workspace', () => {
 
   it('normalizes surrounding whitespace before computing a unique copy name', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveDocument(storedDocument())
-    await repository.saveDocument(storedDocument({ id: 'existing-copy', name: 'guide-副本.md' }))
+    await repository.saveDocument(storedDocument(), { expectedUpdatedAt: null })
+    await repository.saveDocument(storedDocument({ id: 'existing-copy', name: 'guide-副本.md' }), { expectedUpdatedAt: null })
     const user = userEvent.setup()
     renderDocuments(repository)
 
@@ -424,5 +426,36 @@ describe('Markdown document workspace', () => {
     renderDocuments(repository)
 
     expect(readSnapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it('uploads successfully and clears busy state under StrictMode', async () => {
+    const onSaveDocument = vi.fn(async () => undefined)
+    render(<StrictMode><DocumentWorkspace productId="flora" documents={[]} onSaveDocument={onSaveDocument} /></StrictMode>)
+
+    await userEvent.setup().upload(
+      screen.getByLabelText('上传 Markdown 文档'),
+      markdownFile('strict.md', '# Strict'),
+    )
+
+    expect(onSaveDocument).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('上传 Markdown 文档')).not.toBeDisabled()
+    expect(screen.getByLabelText('上传 Markdown 文档').closest('section')).toHaveAttribute('aria-busy', 'false')
+  })
+
+  it('ignores Escape while an overwrite save is busy', async () => {
+    let resolveSave!: () => void
+    const existing = storedDocument()
+    const onSaveDocument = vi.fn(() => new Promise<void>((resolve) => { resolveSave = resolve }))
+    render(<DocumentWorkspace productId="flora" documents={[existing]} onSaveDocument={onSaveDocument} />)
+    const user = userEvent.setup()
+    await user.upload(screen.getByLabelText('上传 Markdown 文档'), markdownFile('guide.md', '# Pending'))
+    const dialog = screen.getByRole('dialog', { name: '文档名称冲突' })
+
+    await user.click(within(dialog).getByRole('button', { name: '覆盖现有文档' }))
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(screen.getByRole('dialog', { name: '文档名称冲突' })).toBeInTheDocument()
+
+    await act(async () => { resolveSave(); await Promise.resolve() })
+    expect(screen.queryByRole('dialog', { name: '文档名称冲突' })).not.toBeInTheDocument()
   })
 })

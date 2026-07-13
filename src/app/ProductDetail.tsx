@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import type { DocumentMutationToken } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
 import { DocumentWorkspace } from './DocumentWorkspace'
@@ -8,18 +9,19 @@ import { ProductSettings } from './ProductSettings'
 import { TaskBoard } from './TaskBoard'
 import { VersionList } from './VersionList'
 import { getSafeHttpsUrl } from './productForm'
+import { mutationErrorMessage } from './mutationError'
 
 interface ProductDetailProps {
   products: Product[]
   workItems: WorkItem[]
   versions: ProductVersion[]
   documents: MarkdownDocument[]
-  onSaveProduct: (product: Product) => void
-  onSaveWorkItem: (item: WorkItem) => void
-  onSaveVersion: (version: ProductVersion) => void
-  onSaveDocument: (document: MarkdownDocument, expectedUpdatedAt?: string) => Promise<void>
-  onArchiveProduct: (product: Product) => void
-  onRestoreProduct: (product: Product) => void
+  onSaveProduct: (product: Product) => Promise<void>
+  onSaveWorkItem: (item: WorkItem) => Promise<void>
+  onSaveVersion: (version: ProductVersion) => Promise<void>
+  onSaveDocument: (document: MarkdownDocument, token: DocumentMutationToken) => Promise<void>
+  onArchiveProduct: (product: Product) => Promise<void>
+  onRestoreProduct: (product: Product) => Promise<void>
 }
 const tabs = [
   { id: 'overview', label: '概览' }, { id: 'tasks', label: '任务' }, { id: 'versions', label: '版本' },
@@ -30,18 +32,22 @@ export function ProductDetail({ products, workItems, versions, documents, onSave
   const { productId = '', tab } = useParams()
   const navigate = useNavigate()
   const [restoreError, setRestoreError] = useState('')
+  const [restoreBusy, setRestoreBusy] = useState(false)
   const product = products.find(({ id }) => id === productId)
   if (!product) return <StateCard title="产品不存在" text="未找到对应产品，它可能已被移除或链接有误。" />
   if (product.archivedAt !== null) {
-    const restore = () => {
+    const restore = async () => {
+      setRestoreBusy(true)
       try {
-        onRestoreProduct(product)
+        await onRestoreProduct(product)
         navigate(`/products/${product.id}`)
-      } catch {
-        setRestoreError('恢复失败，请稍后重试')
+      } catch (error) {
+        setRestoreError(mutationErrorMessage(error, '恢复失败，请稍后重试'))
+      } finally {
+        setRestoreBusy(false)
       }
     }
-    return <StateCard title="产品已归档" text="该产品已从活跃工作台隐藏，但数据仍然保留。">{restoreError && <p role="alert" className="feedback error">{restoreError}</p>}<button onClick={restore}>恢复产品</button></StateCard>
+    return <StateCard title="产品已归档" text="该产品已从活跃工作台隐藏，但数据仍然保留。">{restoreError && <p role="alert" className="feedback error">{restoreError}</p>}<button onClick={() => void restore()} disabled={restoreBusy}>恢复产品</button></StateCard>
   }
   const activeTab = tab ?? 'overview'
   if (!tabs.some(({ id }) => id === activeTab)) return <Navigate to={`/products/${product.id}/overview`} replace />

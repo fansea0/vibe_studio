@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MAX_MARKDOWN_FILE_BYTES,
   normalizeDocumentName,
+  utf8ByteLength,
   validateDocumentName,
 } from '../../src/domain/documentName'
 
@@ -28,5 +29,9 @@ describe('document names', () => {
 
   it('sets the Markdown upload limit to 512 KiB', () => {
     expect(MAX_MARKDOWN_FILE_BYTES).toBe(512 * 1024)
+  })
+
+  it('counts UTF-8 bytes rather than JavaScript code units', () => {
+    expect(utf8ByteLength('a你😀')).toBe(8)
   })
 })
