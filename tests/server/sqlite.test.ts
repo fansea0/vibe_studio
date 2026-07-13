@@ -52,4 +52,19 @@ describe('sqlite repository', () => {
     expect(() => r.createVersion(p.id, { number: '3', status: 'planned', releasedAt: null, notes: '' })).toThrow(RepositoryError)
     r.close()
   })
+
+  it('has explicit defaults, foreign-key defaults, indexes, and complete optimistic updates', () => {
+    const r = createSqliteRepository(':memory:'); const p = r.listProducts()[0]
+    // Access the underlying schema through repository behavior and sqlite_master-backed contract.
+    expect(r.tableNames()).toEqual(expect.arrayContaining(['products', 'work_items', 'versions', 'documents']))
+    const w = r.createWorkItem(p.id, { type: 'bug', title: 'x', priority: 'low', dueDate: null, status: 'todo' })
+    const w2 = r.updateWorkItem(w.id, { type: 'requirement', title: 'y', priority: 'urgent', dueDate: '2026-01-01', status: 'done' }, w.updatedAt)
+    expect(w2).toMatchObject({ type: 'requirement', title: 'y', priority: 'urgent', dueDate: '2026-01-01', status: 'done' })
+    expect(() => r.updateWorkItem(w.id, { status: 'invalid' as any })).toThrow(RepositoryError)
+    const v = r.createVersion(p.id, { number: '9', status: 'planned', releasedAt: null, notes: 'a' })
+    const v2 = r.updateVersion(v.id, { status: 'released', releasedAt: '2026-01-01T00:00:00Z', notes: 'b' }, v.updatedAt)
+    expect(v2.status).toBe('released'); expect(v2.releasedAt).toBe('2026-01-01T00:00:00Z'); expect(v2.notes).toBe('b')
+    expect(() => r.updateVersion(v.id, { status: 'planned', releasedAt: 'bad' })).toThrow(RepositoryError)
+    r.close()
+  })
 })

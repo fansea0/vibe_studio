@@ -27,13 +27,13 @@ const mapWork = (r: any): WorkItem => ({ id: String(r.id), productId: String(r.p
 const mapVersion = (r: any): ProductVersion => ({ id: String(r.id), productId: String(r.product_id), number: r.number, status: ['planned','released'][r.status] as VersionStatus, releasedAt: r.released_at || null, notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at })
 const mapDocument = (r: any): MarkdownDocument => ({ id: String(r.id), productId: String(r.product_id), name: r.name, content: r.content, createdAt: r.created_at, updatedAt: r.updated_at })
 
-export interface SqliteRepository { listProducts(includeArchived?: boolean): Product[]; getProduct(id: string): Product|undefined; createProduct(i: ProductInput): Product; updateProduct(id: string, i: Partial<ProductInput>, expectedUpdatedAt?: string): Product; archiveProduct(id: string, e?: string): Product; restoreProduct(id: string, e?: string): Product; listWorkItems(pid: string): WorkItem[]; createWorkItem(pid: string, i: WorkInput): WorkItem; updateWorkItem(id: string, i: Partial<WorkInput>): WorkItem; deleteWorkItem(id: string): void; listVersions(pid: string): ProductVersion[]; createVersion(pid: string, i: VersionInput): ProductVersion; deleteVersion(id: string): void; listDocuments(pid: string): MarkdownDocument[]; createDocument(pid: string, i: DocInput, e?: string): MarkdownDocument; updateDocument(id: string, i: Partial<DocInput>, e?: string): MarkdownDocument; deleteDocument(id: string): void; getProductSummary(pid: string): any; transaction<T>(fn: () => T): T; tableNames(): string[]; close(): void }
+export interface SqliteRepository { listProducts(includeArchived?: boolean): Product[]; getProduct(id: string): Product|undefined; createProduct(i: ProductInput): Product; updateProduct(id: string, i: Partial<ProductInput>, expectedUpdatedAt?: string): Product; archiveProduct(id: string, e?: string): Product; restoreProduct(id: string, e?: string): Product; listWorkItems(pid: string): WorkItem[]; createWorkItem(pid: string, i: WorkInput): WorkItem; updateWorkItem(id: string, i: Partial<WorkInput>, expectedUpdatedAt?: string): WorkItem; deleteWorkItem(id: string): void; listVersions(pid: string): ProductVersion[]; createVersion(pid: string, i: VersionInput): ProductVersion; updateVersion(id: string, i: Partial<VersionInput>, expectedUpdatedAt?: string): ProductVersion; deleteVersion(id: string): void; listDocuments(pid: string): MarkdownDocument[]; createDocument(pid: string, i: DocInput, e?: string): MarkdownDocument; updateDocument(id: string, i: Partial<DocInput>, e?: string): MarkdownDocument; deleteDocument(id: string): void; getProductSummary(pid: string): any; transaction<T>(fn: () => T): T; tableNames(): string[]; close(): void }
 
 export function createSqliteRepository(filename: string): SqliteRepository {
   const db = new Database(filename); db.pragma('foreign_keys = ON')
   db.exec(`CREATE TABLE IF NOT EXISTS products (
 -- 字段: 主键
-id INTEGER PRIMARY KEY AUTOINCREMENT,
+id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL DEFAULT 0,
 -- 字段: 名称
 name TEXT NOT NULL DEFAULT '',
 -- 字段: 规范化名称
@@ -67,9 +67,9 @@ is_deleted INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS work_items (
 -- 字段: 主键
-id INTEGER PRIMARY KEY AUTOINCREMENT,
+id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL DEFAULT 0,
 -- 字段: 产品ID
-product_id INTEGER NOT NULL,
+product_id INTEGER NOT NULL DEFAULT 0,
 -- 字段: 类型
 type INTEGER NOT NULL DEFAULT 0,
 -- 字段: 标题
@@ -90,9 +90,9 @@ FOREIGN KEY(product_id) REFERENCES products(id)
 );
 CREATE TABLE IF NOT EXISTS versions (
 -- 字段: 主键
-id INTEGER PRIMARY KEY AUTOINCREMENT,
+id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL DEFAULT 0,
 -- 字段: 产品ID
-product_id INTEGER NOT NULL,
+product_id INTEGER NOT NULL DEFAULT 0,
 -- 字段: 版本号
 number TEXT NOT NULL DEFAULT '',
 -- 字段: 状态
@@ -111,9 +111,9 @@ FOREIGN KEY(product_id) REFERENCES products(id)
 );
 CREATE TABLE IF NOT EXISTS documents (
 -- 字段: 主键
-id INTEGER PRIMARY KEY AUTOINCREMENT,
+id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL DEFAULT 0,
 -- 字段: 产品ID
-product_id INTEGER NOT NULL,
+product_id INTEGER NOT NULL DEFAULT 0,
 -- 字段: 名称
 name TEXT NOT NULL DEFAULT '',
 -- 字段: 规范化名称
@@ -131,21 +131,25 @@ FOREIGN KEY(product_id) REFERENCES products(id)
 CREATE UNIQUE INDEX IF NOT EXISTS products_name_uq ON products(normalized_name) WHERE is_deleted=0;
 CREATE UNIQUE INDEX IF NOT EXISTS versions_product_number_uq ON versions(product_id,number) WHERE is_deleted=0;
 CREATE UNIQUE INDEX IF NOT EXISTS documents_product_name_uq ON documents(product_id,normalized_name) WHERE is_deleted=0;`)
+  db.exec('CREATE INDEX IF NOT EXISTS work_items_product_idx ON work_items(product_id); CREATE INDEX IF NOT EXISTS versions_product_idx ON versions(product_id); CREATE INDEX IF NOT EXISTS documents_product_idx ON documents(product_id)')
   const getProduct = (id: string) => { const r = db.prepare('SELECT * FROM products WHERE id=? AND is_deleted=0').get(Number(id)); return r ? mapProduct(r) : undefined }
   const ensureName = (name: string) => { if (typeof name !== 'string' || !normalized(name)) throw new RepositoryError('VALIDATION_FAILED', 'name') }
+  const ensureProductStatus = (status: string) => { if (statusCode[status] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'status') }
+  const ensureWork = (i: Partial<WorkInput>) => { if (i.type !== undefined && workCode[i.type] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'type'); if (i.priority !== undefined && workCode[i.priority] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'priority'); if (i.status !== undefined && !['todo','in_progress','done'].includes(i.status)) throw new RepositoryError('VALIDATION_FAILED', 'status') }
   const ensureDoc = (i: Partial<DocInput>) => { if (typeof i.name !== 'string' || !normalized(i.name) || !/\.(md|markdown)$/i.test(i.name) || typeof i.content !== 'string' || Buffer.byteLength(i.content, 'utf8') > 512 * 1024) throw new RepositoryError('VALIDATION_FAILED', 'document') }
   const repository: SqliteRepository = {
     listProducts(includeArchived = true) { const rows = db.prepare(`SELECT * FROM products WHERE is_deleted=0 ${includeArchived ? '' : 'AND status!=3'}`).all(); return rows.map(mapProduct) },
     getProduct,
-    createProduct(i) { ensureName(i.name); const t = now(); try { const x = db.prepare('INSERT INTO products(name,normalized_name,description,product_type,icon,status,completion_percent,user_count,user_count_source,app_url,repository_path,archived_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(i.name, normalized(i.name), i.description, i.productType, i.icon, statusCode[i.status], i.completionPercent, i.userCount, i.userCountSource, i.appUrl ?? '', i.repositoryPath ?? '', i.archivedAt ?? '', t, t); return getProduct(String(x.lastInsertRowid))! } catch { throw new RepositoryError('DUPLICATE', 'product') } },
-    updateProduct(id, i, expected) { const p = getProduct(id); if (!p) throw new RepositoryError('NOT_FOUND', 'product'); if (expected && p.updatedAt !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); const n = { ...p, ...i }; ensureName(n.name); if (statusCode[n.status] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'status'); const updatedAt = bump(p.updatedAt); try { db.prepare('UPDATE products SET name=?,normalized_name=?,description=?,product_type=?,icon=?,status=?,completion_percent=?,user_count=?,user_count_source=?,app_url=?,repository_path=?,archived_at=?,updated_at=? WHERE id=? AND is_deleted=0').run(n.name, normalized(n.name), n.description, n.productType, n.icon, statusCode[n.status], n.completionPercent, n.userCount, n.userCountSource, n.appUrl ?? '', n.repositoryPath ?? '', n.archivedAt ?? '', updatedAt, Number(id)) } catch { throw new RepositoryError('DUPLICATE', 'product') } return getProduct(id)! },
+    createProduct(i) { ensureName(i.name); ensureProductStatus(i.status); if (typeof i.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); const t = now(); try { const x = db.prepare('INSERT INTO products(name,normalized_name,description,product_type,icon,status,completion_percent,user_count,user_count_source,app_url,repository_path,archived_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(i.name, normalized(i.name), i.description, i.productType, i.icon, statusCode[i.status], i.completionPercent, i.userCount, i.userCountSource, i.appUrl ?? '', i.repositoryPath ?? '', i.archivedAt ?? '', t, t); return getProduct(String(x.lastInsertRowid))! } catch { throw new RepositoryError('DUPLICATE', 'product') } },
+    updateProduct(id, i, expected) { const p = getProduct(id); if (!p) throw new RepositoryError('NOT_FOUND', 'product'); if (expected && p.updatedAt !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); const n = { ...p, ...i }; ensureName(n.name); ensureProductStatus(n.status); if (typeof n.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); if (statusCode[n.status] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'status'); const updatedAt = bump(p.updatedAt); try { db.prepare('UPDATE products SET name=?,normalized_name=?,description=?,product_type=?,icon=?,status=?,completion_percent=?,user_count=?,user_count_source=?,app_url=?,repository_path=?,archived_at=?,updated_at=? WHERE id=? AND is_deleted=0').run(n.name, normalized(n.name), n.description, n.productType, n.icon, statusCode[n.status], n.completionPercent, n.userCount, n.userCountSource, n.appUrl ?? '', n.repositoryPath ?? '', n.archivedAt ?? '', updatedAt, Number(id)) } catch { throw new RepositoryError('DUPLICATE', 'product') } return getProduct(id)! },
     archiveProduct(id, e) { return repository.updateProduct(id, { status: 'archived', archivedAt: now() }, e) }, restoreProduct(id, e) { return repository.updateProduct(id, { status: 'developing', archivedAt: null }, e) },
     listWorkItems(pid) { return db.prepare('SELECT * FROM work_items WHERE product_id=? AND is_deleted=0').all(Number(pid)).map(mapWork) },
-    createWorkItem(pid, i) { if (!getProduct(pid)) throw new RepositoryError('NOT_FOUND', 'product'); const t = now(); const x = db.prepare('INSERT INTO work_items(product_id,type,title,priority,due_date,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(Number(pid), workCode[i.type], i.title, workCode[i.priority], i.dueDate ?? '', workCode[i.status], t, t); return mapWork(db.prepare('SELECT * FROM work_items WHERE id=?').get(Number(x.lastInsertRowid))) },
-    updateWorkItem(id, i) { const r = db.prepare('SELECT * FROM work_items WHERE id=? AND is_deleted=0').get(Number(id)) as any; if (!r) throw new RepositoryError('NOT_FOUND', 'work item'); db.prepare('UPDATE work_items SET title=?,updated_at=? WHERE id=?').run(i.title ?? r.title, bump(r.updated_at), Number(id)); return mapWork(db.prepare('SELECT * FROM work_items WHERE id=?').get(Number(id))) },
+    createWorkItem(pid, i) { if (!getProduct(pid)) throw new RepositoryError('NOT_FOUND', 'product'); ensureWork(i); const t = now(); const x = db.prepare('INSERT INTO work_items(product_id,type,title,priority,due_date,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(Number(pid), workCode[i.type], i.title, workCode[i.priority], i.dueDate ?? '', workCode[i.status], t, t); return mapWork(db.prepare('SELECT * FROM work_items WHERE id=?').get(Number(x.lastInsertRowid))) },
+    updateWorkItem(id, i, expected) { const r = db.prepare('SELECT * FROM work_items WHERE id=? AND is_deleted=0').get(Number(id)) as any; if (!r) throw new RepositoryError('NOT_FOUND', 'work item'); if (expected && r.updated_at !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); ensureWork(i); db.prepare('UPDATE work_items SET type=?,title=?,priority=?,due_date=?,status=?,updated_at=? WHERE id=? AND is_deleted=0').run(i.type === undefined ? r.type : workCode[i.type], i.title ?? r.title, i.priority === undefined ? r.priority : workCode[i.priority], i.dueDate === undefined ? r.due_date : i.dueDate ?? '', i.status === undefined ? r.status : workCode[i.status], bump(r.updated_at), Number(id)); return mapWork(db.prepare('SELECT * FROM work_items WHERE id=?').get(Number(id))) },
     deleteWorkItem(id) { if (!db.prepare('UPDATE work_items SET is_deleted=1 WHERE id=? AND is_deleted=0').run(Number(id)).changes) throw new RepositoryError('NOT_FOUND', 'work item') },
     listVersions(pid) { return db.prepare('SELECT * FROM versions WHERE product_id=? AND is_deleted=0').all(Number(pid)).map(mapVersion) },
     createVersion(pid, i) { if (!getProduct(pid)) throw new RepositoryError('NOT_FOUND', 'product'); if (versionCode[i.status] === undefined || typeof i.number !== 'string' || !i.number.trim() || (i.status === 'planned' && i.releasedAt) || (i.status === 'released' && (!i.releasedAt || Number.isNaN(Date.parse(i.releasedAt)) || !/^\d{4}-\d\d-\d\dT.*Z$/.test(i.releasedAt)))) throw new RepositoryError('VALIDATION_FAILED', 'version'); const t = now(); try { const x = db.prepare('INSERT INTO versions(product_id,number,status,released_at,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').run(Number(pid), i.number, versionCode[i.status], i.releasedAt ?? '', i.notes, t, t); return mapVersion(db.prepare('SELECT * FROM versions WHERE id=?').get(Number(x.lastInsertRowid))) } catch { throw new RepositoryError('DUPLICATE', 'version') } },
+    updateVersion(id, i, expected) { const r = db.prepare('SELECT * FROM versions WHERE id=? AND is_deleted=0').get(Number(id)) as any; if (!r) throw new RepositoryError('NOT_FOUND', 'version'); if (expected && r.updated_at !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); const status = i.status === undefined ? ['planned','released'][r.status] as VersionStatus : i.status; const releasedAt = i.releasedAt === undefined ? (r.released_at || null) : i.releasedAt; if (versionCode[status] === undefined || typeof (i.number ?? r.number) !== 'string' || !(i.number ?? r.number).trim() || (status === 'planned' && releasedAt) || (status === 'released' && (!releasedAt || Number.isNaN(Date.parse(releasedAt)) || !/^\d{4}-\d\d-\d\dT.*Z$/.test(releasedAt)))) throw new RepositoryError('VALIDATION_FAILED', 'version'); try { db.prepare('UPDATE versions SET number=?,status=?,released_at=?,notes=?,updated_at=? WHERE id=? AND is_deleted=0').run(i.number ?? r.number, versionCode[status], releasedAt ?? '', i.notes ?? r.notes, bump(r.updated_at), Number(id)) } catch { throw new RepositoryError('DUPLICATE', 'version') } return mapVersion(db.prepare('SELECT * FROM versions WHERE id=?').get(Number(id))) },
     deleteVersion(id) { if (!db.prepare('UPDATE versions SET is_deleted=1 WHERE id=? AND is_deleted=0').run(Number(id)).changes) throw new RepositoryError('NOT_FOUND', 'version') },
     listDocuments(pid) { return db.prepare('SELECT * FROM documents WHERE product_id=? AND is_deleted=0').all(Number(pid)).map(mapDocument) },
     createDocument(pid, i) { if (!getProduct(pid)) throw new RepositoryError('NOT_FOUND', 'product'); ensureDoc(i); const t = now(); try { const x = db.prepare('INSERT INTO documents(product_id,name,normalized_name,content,created_at,updated_at) VALUES (?,?,?,?,?,?)').run(Number(pid), i.name, normalized(i.name), i.content, t, t); return mapDocument(db.prepare('SELECT * FROM documents WHERE id=?').get(Number(x.lastInsertRowid))) } catch { throw new RepositoryError('DUPLICATE', 'document') } },
