@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSqliteRepository, RepositoryError } from '../../src/server/sqlite'
+import { createSqliteRepository, RepositoryError, schemaComments } from '../../src/server/sqlite'
 
 describe('sqlite repository', () => {
   it('creates schema and seeds products', () => {
@@ -26,4 +26,30 @@ describe('sqlite repository', () => {
     expect(r.getProductSummary(p.id)).toBeDefined(); r.close()
   })
   it('validates markdown size and extension', () => { const r=createSqliteRepository(':memory:'); const p=r.listProducts()[0]; expect(()=>r.createDocument(p.id,{name:'x.txt',content:'x'})).toThrow(); expect(()=>r.createDocument(p.id,{name:'x.md',content:'a'.repeat(512*1024+1)})).toThrow() })
+
+  it('exposes comments for every schema field and filters deleted rows', () => {
+    const r = createSqliteRepository(':memory:'); const p = r.listProducts()[0]
+    expect(Object.keys(schemaComments.products)).toHaveLength(16)
+    expect(Object.keys(schemaComments.work_items)).toHaveLength(10)
+    const w = r.createWorkItem(p.id, { type: 'bug', title: 'x', priority: 'low', dueDate: null, status: 'todo' })
+    const v = r.createVersion(p.id, { number: 'delete-me', status: 'planned', releasedAt: null, notes: '' })
+    const d = r.createDocument(p.id, { name: 'delete-me.md', content: 'x' })
+    r.deleteWorkItem(w.id); r.deleteVersion(v.id); r.deleteDocument(d.id)
+    expect(r.listWorkItems(p.id)).toHaveLength(0); expect(r.listVersions(p.id)).toHaveLength(0); expect(r.listDocuments(p.id)).toHaveLength(0)
+    expect(() => r.createVersion(p.id, { number: 'delete-me', status: 'planned', releasedAt: null, notes: '' })).not.toThrow()
+    expect(() => r.createDocument(p.id, { name: 'delete-me.md', content: 'x' })).not.toThrow()
+    r.close()
+  })
+
+  it('enforces document update validation and version invariants', () => {
+    const r = createSqliteRepository(':memory:'); const p = r.listProducts()[0]
+    const d = r.createDocument(p.id, { name: 'A.md', content: 'ok' })
+    expect(() => r.updateDocument(d.id, { name: 'bad.txt' })).toThrow(RepositoryError)
+    expect(() => r.updateDocument(d.id, { content: '😀'.repeat(200000) })).toThrow(RepositoryError)
+    expect(() => r.createVersion(p.id, { number: '1', status: 'planned', releasedAt: '2020-01-01T00:00:00Z', notes: '' })).toThrow(RepositoryError)
+    expect(() => r.createVersion(p.id, { number: '2', status: 'released', releasedAt: null, notes: '' })).toThrow(RepositoryError)
+    r.createVersion(p.id, { number: '3', status: 'released', releasedAt: '2020-01-01T00:00:00Z', notes: '' })
+    expect(() => r.createVersion(p.id, { number: '3', status: 'planned', releasedAt: null, notes: '' })).toThrow(RepositoryError)
+    r.close()
+  })
 })
