@@ -1,18 +1,22 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import type { Product } from '../domain/models'
+import type { Product, ProductVersion, WorkItem } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
-import type { StudioRepository } from '../data/studioRepository'
 import { ProductOverview } from './ProductOverview'
 import { ProductSettings } from './ProductSettings'
 
-interface ProductDetailProps { products: Product[]; repository: StudioRepository; onRefresh: () => void }
+interface ProductDetailProps {
+  products: Product[]
+  workItems: WorkItem[]
+  versions: ProductVersion[]
+  onSaveProduct: (product: Product) => void
+}
 const tabs = [
   { id: 'overview', label: '概览' }, { id: 'tasks', label: '任务' }, { id: 'versions', label: '版本' },
   { id: 'documents', label: '文档' }, { id: 'settings', label: '设置' },
 ] as const
 
-export function ProductDetail({ products, repository, onRefresh }: ProductDetailProps) {
+export function ProductDetail({ products, workItems, versions, onSaveProduct }: ProductDetailProps) {
   const { productId = '', tab } = useParams()
   const navigate = useNavigate()
   const [restoreError, setRestoreError] = useState('')
@@ -21,8 +25,8 @@ export function ProductDetail({ products, repository, onRefresh }: ProductDetail
   if (product.archivedAt !== null || product.status === 'archived') {
     const restore = () => {
       try {
-        repository.saveProduct({ ...product, status: 'developing', archivedAt: null, updatedAt: new Date().toISOString() })
-        onRefresh(); navigate(`/products/${product.id}`)
+        onSaveProduct({ ...product, status: 'developing', archivedAt: null, updatedAt: new Date().toISOString() })
+        navigate(`/products/${product.id}`)
       } catch {
         setRestoreError('恢复失败，请稍后重试')
       }
@@ -31,7 +35,7 @@ export function ProductDetail({ products, repository, onRefresh }: ProductDetail
   }
   const activeTab = tab ?? 'overview'
   if (!tabs.some(({ id }) => id === activeTab)) return <Navigate to={`/products/${product.id}/overview`} replace />
-  const metrics = deriveProductMetrics(product, repository.listWorkItems(product.id), repository.listVersions(product.id))
+  const metrics = deriveProductMetrics(product, workItems, versions)
 
   return (
     <>
@@ -39,7 +43,7 @@ export function ProductDetail({ products, repository, onRefresh }: ProductDetail
       <header className="detail-heading"><div className="detail-title"><span className="hero-icon">{product.icon}</span><div><h1>{product.name}</h1><p>{product.description || '暂未填写产品描述。'}</p></div></div>{product.appUrl && <a className="external-button" href={product.appUrl} target="_blank" rel="noopener noreferrer">访问应用 ↗</a>}</header>
       <nav className="tabs" role="tablist" aria-label="产品详情导航">{tabs.map(({ id, label }) => <Link key={id} role="tab" aria-selected={activeTab === id} className={activeTab === id ? 'selected' : ''} to={`/products/${product.id}/${id}`}>{label}</Link>)}</nav>
       {activeTab === 'overview' && <ProductOverview product={product} metrics={metrics} />}
-      {activeTab === 'settings' && <ProductSettings product={product} products={products} repository={repository} onSaved={() => onRefresh()} onArchived={() => { onRefresh(); navigate('/products') }} />}
+      {activeTab === 'settings' && <ProductSettings product={product} products={products} onSaveProduct={onSaveProduct} onArchived={() => navigate('/products')} />}
       {(activeTab === 'tasks' || activeTab === 'versions' || activeTab === 'documents') && <section className="overview-card placeholder"><div className="placeholder-icon">◇</div><h2>{tabs.find(({ id }) => id === activeTab)?.label}</h2><p>此工作区将在后续功能中开放。</p></section>}
     </>
   )

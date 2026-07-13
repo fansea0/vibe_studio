@@ -44,12 +44,16 @@ export const validateProductValues = (
     errors.name = '产品名称已存在'
   }
 
-  const completion = Number(values.completionPercent)
-  if (!Number.isInteger(completion) || completion < 0 || completion > 100) {
+  const completionText = values.completionPercent.trim()
+  const completion = Number(completionText)
+  if (completionText === '') errors.completionPercent = '请输入完成度'
+  else if (!Number.isInteger(completion) || completion < 0 || completion > 100) {
     errors.completionPercent = '完成度必须是 0 到 100 的整数'
   }
-  const users = Number(values.userCount)
-  if (!Number.isInteger(users) || users < 0) errors.userCount = '用户数必须是非负整数'
+  const userCountText = values.userCount.trim()
+  const users = Number(userCountText)
+  if (userCountText === '') errors.userCount = '请输入用户数'
+  else if (!Number.isInteger(users) || users < 0) errors.userCount = '用户数必须是非负整数'
   if (values.appUrl.trim() !== '' && !values.appUrl.trim().startsWith('https://')) {
     errors.appUrl = '应用地址必须以 https:// 开头'
   }

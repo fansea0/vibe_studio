@@ -1,17 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import type { Product } from '../domain/models'
-import type { StudioRepository } from '../data/studioRepository'
 import { ProductFields } from './ProductFields'
 import { createProductId, mergeProductValues, productToFormValues, validateProductValues } from './productForm'
 
 interface ProductDialogProps {
   products: Product[]
-  repository: StudioRepository
+  onSaveProduct: (product: Product) => void
   onClose: () => void
   onCreated: (product: Product) => void
 }
 
-export function ProductDialog({ products, repository, onClose, onCreated }: ProductDialogProps) {
+export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: ProductDialogProps) {
   const [values, setValues] = useState(productToFormValues())
   const [errors, setErrors] = useState({})
   const [failure, setFailure] = useState('')
@@ -30,7 +29,7 @@ export function ProductDialog({ products, repository, onClose, onCreated }: Prod
     }
     const product = mergeProductValues(base, values, now)
     try {
-      repository.saveProduct(product)
+      onSaveProduct(product)
       onCreated(product)
     } catch {
       setFailure('保存失败，请稍后重试')
@@ -41,7 +40,7 @@ export function ProductDialog({ products, repository, onClose, onCreated }: Prod
     <div className="dialog-backdrop">
       <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
         <div className="dialog-heading"><h2 id="create-title">新建产品</h2><button className="icon-button" onClick={onClose} aria-label="关闭">×</button></div>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <ProductFields values={values} errors={errors} onChange={setValues} />
           {failure && <p role="alert" className="feedback error">{failure}</p>}
           <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>取消</button><button type="submit">创建产品</button></div>

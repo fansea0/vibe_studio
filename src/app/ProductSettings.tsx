@@ -1,18 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Product } from '../domain/models'
-import type { StudioRepository } from '../data/studioRepository'
 import { ProductFields } from './ProductFields'
 import { mergeProductValues, productToFormValues, validateProductValues } from './productForm'
 
 interface ProductSettingsProps {
   product: Product
   products: Product[]
-  repository: StudioRepository
-  onSaved: (product: Product) => void
+  onSaveProduct: (product: Product) => void
   onArchived: () => void
 }
 
-export function ProductSettings({ product, products, repository, onSaved, onArchived }: ProductSettingsProps) {
+export function ProductSettings({ product, products, onSaveProduct, onArchived }: ProductSettingsProps) {
   const [values, setValues] = useState(productToFormValues(product))
   const [errors, setErrors] = useState({})
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -27,8 +25,7 @@ export function ProductSettings({ product, products, repository, onSaved, onArch
     if (Object.keys(nextErrors).length > 0) return
     const updated = mergeProductValues(product, values, new Date().toISOString())
     try {
-      repository.saveProduct(updated)
-      onSaved(updated)
+      onSaveProduct(updated)
       setFeedback({ type: 'success', text: '设置已保存' })
     } catch {
       setFeedback({ type: 'error', text: '保存失败，请稍后重试' })
@@ -38,7 +35,7 @@ export function ProductSettings({ product, products, repository, onSaved, onArch
   const archive = () => {
     const now = new Date().toISOString()
     try {
-      repository.saveProduct({ ...product, status: 'archived', archivedAt: now, updatedAt: now })
+      onSaveProduct({ ...product, status: 'archived', archivedAt: now, updatedAt: now })
       onArchived()
     } catch {
       setConfirming(false)
@@ -48,7 +45,7 @@ export function ProductSettings({ product, products, repository, onSaved, onArch
 
   return (
     <div className="settings-stack">
-      <form className="overview-card settings-form" onSubmit={save}>
+      <form className="overview-card settings-form" onSubmit={save} noValidate>
         <div className="section-heading"><div><h2>产品设置</h2><p>维护展示信息、状态和数据口径。</p></div><button type="submit">保存设置</button></div>
         <ProductFields values={values} errors={errors} onChange={setValues} allowArchivedStatus={false} />
         {feedback && <p role={feedback.type === 'success' ? 'status' : 'alert'} className={`feedback ${feedback.type}`}>{feedback.text}</p>}

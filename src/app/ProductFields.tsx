@@ -16,7 +16,7 @@ export function ProductFields({ values, errors, onChange, allowArchivedStatus = 
     <label className="field">
       <span>{label}</span>
       {input}
-      {errors[name] && <small className="field-error">{errors[name]}</small>}
+      {errors[name] && <small role="alert" className="field-error">{errors[name]}</small>}
     </label>
   )
 
@@ -34,8 +34,8 @@ export function ProductFields({ values, errors, onChange, allowArchivedStatus = 
           <option value="released">已发布</option>{allowArchivedStatus && <option value="archived">已归档</option>}
         </select>
       ))}
-      {field('completionPercent', '完成度', <input name="completionPercent" type="number" min="0" max="100" value={values.completionPercent} onChange={change} />)}
-      {field('userCount', '用户数', <input name="userCount" type="number" min="0" value={values.userCount} onChange={change} />)}
+      {field('completionPercent', '完成度', <input name="completionPercent" type="number" min="0" max="100" required value={values.completionPercent} onChange={change} />)}
+      {field('userCount', '用户数', <input name="userCount" type="number" min="0" required value={values.userCount} onChange={change} />)}
       {field('userCountSource', '用户数来源', <input name="userCountSource" value={values.userCountSource} onChange={change} />)}
       {field('appUrl', '应用地址', <input name="appUrl" type="url" placeholder="https://" value={values.appUrl} onChange={change} />)}
     </div>

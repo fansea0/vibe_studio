@@ -56,6 +56,23 @@ describe('product workspace', () => {
     expect(screen.getByText('应用地址必须以 https:// 开头')).toBeInTheDocument()
   })
 
+  it('rejects empty numeric fields when creating and does not persist the product', async () => {
+    const repository = createStudioRepository(localStorage)
+    const user = userEvent.setup()
+    renderApp('/products', repository)
+
+    await user.click(screen.getByRole('button', { name: '新建产品' }))
+    await user.type(screen.getByLabelText('产品名称'), 'Empty Metrics')
+    await user.clear(screen.getByLabelText('完成度'))
+    await user.clear(screen.getByLabelText('用户数'))
+    await user.click(screen.getByRole('button', { name: '创建产品' }))
+
+    expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(
+      expect.arrayContaining(['请输入完成度', '请输入用户数']),
+    )
+    expect(repository.listProducts().some(({ name }) => name === 'Empty Metrics')).toBe(false)
+  })
+
   it('updates user count and source in settings and reflects it on overview', async () => {
     const user = userEvent.setup()
     renderApp('/products/flora/settings')
@@ -72,6 +89,23 @@ describe('product workspace', () => {
     await user.click(screen.getByRole('tab', { name: '概览' }))
     expect(screen.getByText('3,000')).toBeInTheDocument()
     expect(screen.getByText('billing records')).toBeInTheDocument()
+  })
+
+  it('rejects empty numeric fields in settings and preserves stored values', async () => {
+    const repository = createStudioRepository(localStorage)
+    const original = repository.listProducts().find(({ id }) => id === 'flora')!
+    const user = userEvent.setup()
+    renderApp('/products/flora/settings', repository)
+
+    await user.clear(screen.getByLabelText('完成度'))
+    await user.clear(screen.getByLabelText('用户数'))
+    await user.click(screen.getByRole('button', { name: '保存设置' }))
+
+    expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(
+      expect.arrayContaining(['请输入完成度', '请输入用户数']),
+    )
+    expect(repository.listProducts().find(({ id }) => id === 'flora')).toEqual(original)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('archives only after confirmation and hides the product from the active overview', async () => {
