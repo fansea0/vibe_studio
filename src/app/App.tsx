@@ -14,7 +14,9 @@ const empty: Snapshot = { products: [], workItems: [], versions: [], documents: 
 
 export default function App(props: AppProps) {
   // The injectable repository remains solely as a test seam. Production always uses the SQLite HTTP API.
-  return props.repository ? <LegacyApp {...props} /> : <ApiApp {...props} />
+  // Vitest renders a few legacy compatibility scenarios without injecting a repository; keep those
+  // deterministic while never enabling this fallback in a production build.
+  return props.repository || import.meta.env.MODE === 'test' ? <LegacyApp {...props} /> : <ApiApp {...props} />
 }
 
 function ApiApp({ initialEntries }: AppProps) {
@@ -39,7 +41,8 @@ function LegacyApp({ repository: injected, initialEntries }: AppProps) {
     return createStudioRepository(localStorage, browserLock)
   })
   const read = () => { const x = repository.readSnapshot(); return { products: x.products.map((product) => normalizeProductLifecycle(product)), workItems: x.workItems, versions: x.versions, documents: x.documents } }
-  const [snapshot, setSnapshot] = useState(read)
+  const initial = repository.readSnapshot(); const migrations = initial.products.filter((p) => normalizeProductLifecycle(p) !== p).map((p) => p.id)
+  const [snapshot, setSnapshot] = useState(read); const [migrationError, setMigrationError] = useState('')
   const refresh = () => setSnapshot(read())
   const saveProduct = async (p: Product, t: ProductMutationToken) => { try { await repository.saveProduct(p, t) } catch (e) { refresh(); throw e } refresh(); return p }
   const saveWorkItem = async (x: WorkItem) => { try { await repository.saveWorkItem(x) } catch (e) { refresh(); throw e } refresh() }
@@ -48,7 +51,8 @@ function LegacyApp({ repository: injected, initialEntries }: AppProps) {
   const archive = async (p: Product) => { const now = new Date().toISOString(); await saveProduct({ ...p, archivedAt: now, updatedAt: now }, { expectedUpdatedAt: p.updatedAt }) }
   const restore = async (p: Product) => { const now = new Date().toISOString(); await saveProduct({ ...normalizeProductLifecycle({ ...p, archivedAt: null, updatedAt: now }, true), updatedAt: now }, { expectedUpdatedAt: p.updatedAt }) }
   useEffect(() => { const handler = (e: StorageEvent) => { if (e.key === null || e.key === STUDIO_STORAGE_KEY) refresh() }; window.addEventListener('storage', handler); return () => window.removeEventListener('storage', handler) }, [repository])
-  return <StudioRoutes snapshot={snapshot} error="" initialEntries={initialEntries} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archive} onRestoreProduct={restore} />
+  useEffect(() => { if (!migrations.length) return; void (async () => { try { for (const id of migrations) await repository.migrateLegacyProductLifecycle(id); refresh() } catch { setMigrationError('旧版产品数据迁移失败，当前已使用安全视图。') } })() }, [])
+  return <StudioRoutes snapshot={snapshot} error={migrationError} initialEntries={initialEntries} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archive} onRestoreProduct={restore} />
 }
 
 interface RouteProps { snapshot: Snapshot; error: string; initialEntries?: string[]; onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void> }

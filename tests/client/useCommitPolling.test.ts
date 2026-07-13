@@ -24,4 +24,20 @@ describe('useCommitPolling', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
     await act(async () => { resolve?.({ ok: true, json: async () => ({ data: { items: [], checkedAt: '' } }) } as Response) })
   })
+  it('reloads and clears old commits when switching products', async () => {
+    const responses = [
+      { data: { items: [{ sha: 'one', shortSha: 'one', author: 'A', committedAt: '2026-01-01T00:00:00Z', subject: 'first' }], checkedAt: '' } },
+      { data: { items: [{ sha: 'two', shortSha: 'two', author: 'B', committedAt: '2026-01-02T00:00:00Z', subject: 'second' }], checkedAt: '' } },
+    ]
+    vi.mocked(fetch).mockImplementation(async () => ({ ok: true, json: async () => responses.shift() } as Response))
+    const { result, rerender } = renderHook(({ id }) => useCommitPolling(id), { initialProps: { id: 'p1' } })
+    await act(async () => { await Promise.resolve() })
+    expect(result.current.commits[0].subject).toBe('first')
+    rerender({ id: 'p2' })
+    expect(result.current.commits).toEqual([])
+    expect(result.current.loading).toBe(true)
+    await act(async () => { await Promise.resolve() })
+    expect(result.current.commits[0].subject).toBe('second')
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
 })

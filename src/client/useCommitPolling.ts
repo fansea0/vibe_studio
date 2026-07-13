@@ -5,10 +5,11 @@ export interface CommitPollingState { commits: CommitSummary[]; loading: boolean
 export function useCommitPolling(productId: string | null | undefined, limit = 5): CommitPollingState {
   const [state, setState] = useState<CommitPollingState>({ commits: [], loading: Boolean(productId), error: '', checkedAt: null })
   const requestRef = useRef<AbortController | null>(null)
-  const runningRef = useRef(false)
   useEffect(() => {
     if (!productId) { setState({ commits: [], loading: false, error: '', checkedAt: null }); return }
     let disposed = false
+    const runningRef = { current: false }
+    setState({ commits: [], loading: true, error: '', checkedAt: null })
     const load = async () => {
       if (disposed || runningRef.current) return
       runningRef.current = true
