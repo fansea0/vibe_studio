@@ -40,10 +40,10 @@ function LegacyApp({ repository: injected, initialEntries }: AppProps) {
     const browserLock: MutationLock = navigator.locks ? { request: (name, operation) => navigator.locks.request(name, () => operation()) } : window.indexedDB ? createIndexedDbMutationLock(window.indexedDB) : createUnavailableMutationLock()
     return createStudioRepository(localStorage, browserLock)
   })
-  const read = () => { const x = repository.readSnapshot(); return { products: x.products.map((product) => normalizeProductLifecycle(product)), workItems: x.workItems, versions: x.versions, documents: x.documents } }
+  const read = (x: ReturnType<StudioRepository['readSnapshot']>) => ({ products: x.products.map((product) => normalizeProductLifecycle(product)), workItems: x.workItems, versions: x.versions, documents: x.documents })
   const initial = repository.readSnapshot(); const migrations = initial.products.filter((p) => normalizeProductLifecycle(p) !== p).map((p) => p.id)
-  const [snapshot, setSnapshot] = useState(read); const [migrationError, setMigrationError] = useState('')
-  const refresh = () => setSnapshot(read())
+  const [snapshot, setSnapshot] = useState(() => read(initial)); const [migrationError, setMigrationError] = useState('')
+  const refresh = () => setSnapshot(read(repository.readSnapshot()))
   const saveProduct = async (p: Product, t: ProductMutationToken) => { try { await repository.saveProduct(p, t) } catch (e) { refresh(); throw e } refresh(); return p }
   const saveWorkItem = async (x: WorkItem) => { try { await repository.saveWorkItem(x) } catch (e) { refresh(); throw e } refresh() }
   const saveVersion = async (x: ProductVersion) => { try { await repository.saveVersion(x) } catch (e) { refresh(); throw e } refresh() }
