@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import type { Product, ProductVersion, WorkItem } from '../domain/models'
+import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
+import { DocumentWorkspace } from './DocumentWorkspace'
 import { ProductOverview } from './ProductOverview'
 import { ProductSettings } from './ProductSettings'
 import { TaskBoard } from './TaskBoard'
@@ -12,9 +13,11 @@ interface ProductDetailProps {
   products: Product[]
   workItems: WorkItem[]
   versions: ProductVersion[]
+  documents: MarkdownDocument[]
   onSaveProduct: (product: Product) => void
   onSaveWorkItem: (item: WorkItem) => void
   onSaveVersion: (version: ProductVersion) => void
+  onSaveDocument: (document: MarkdownDocument) => void
   onArchiveProduct: (product: Product) => void
   onRestoreProduct: (product: Product) => void
 }
@@ -23,7 +26,7 @@ const tabs = [
   { id: 'documents', label: '文档' }, { id: 'settings', label: '设置' },
 ] as const
 
-export function ProductDetail({ products, workItems, versions, onSaveProduct, onSaveWorkItem, onSaveVersion, onArchiveProduct, onRestoreProduct }: ProductDetailProps) {
+export function ProductDetail({ products, workItems, versions, documents, onSaveProduct, onSaveWorkItem, onSaveVersion, onSaveDocument, onArchiveProduct, onRestoreProduct }: ProductDetailProps) {
   const { productId = '', tab } = useParams()
   const navigate = useNavigate()
   const [restoreError, setRestoreError] = useState('')
@@ -53,8 +56,8 @@ export function ProductDetail({ products, workItems, versions, onSaveProduct, on
       {activeTab === 'overview' && <ProductOverview product={product} metrics={metrics} />}
       {activeTab === 'tasks' && <TaskBoard productId={product.id} items={workItems.filter(({ productId: ownerId }) => ownerId === product.id)} onSaveWorkItem={onSaveWorkItem} />}
       {activeTab === 'versions' && <VersionList productId={product.id} versions={versions.filter(({ productId: ownerId }) => ownerId === product.id)} currentVersion={metrics.currentVersion} onSaveVersion={onSaveVersion} />}
+      {activeTab === 'documents' && <DocumentWorkspace productId={product.id} documents={documents.filter(({ productId: ownerId }) => ownerId === product.id)} onSaveDocument={onSaveDocument} />}
       {activeTab === 'settings' && <ProductSettings product={product} products={products} onSaveProduct={onSaveProduct} onArchiveProduct={onArchiveProduct} onArchived={() => navigate('/products')} />}
-      {activeTab === 'documents' && <section className="overview-card placeholder" aria-labelledby={`${activeTab}-placeholder-title`}><div className="placeholder-icon">◇</div><h2 id={`${activeTab}-placeholder-title`}>{tabs.find(({ id }) => id === activeTab)?.label}</h2><p>此工作区将在后续功能中开放。</p></section>}
     </>
   )
 }

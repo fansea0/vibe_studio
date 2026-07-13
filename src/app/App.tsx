@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { createStudioRepository, STUDIO_STORAGE_KEY, type StudioRepository } from '../data/studioRepository'
-import type { Product, ProductVersion, WorkItem } from '../domain/models'
+import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import { AppShell } from './AppShell'
 import { ProductDetail } from './ProductDetail'
 import { ProductGrid } from './ProductGrid'
 import { normalizeProductLifecycle } from './productLifecycle'
 
 interface AppProps { repository?: StudioRepository; initialEntries?: string[] }
-interface StudioSnapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[] }
+interface StudioSnapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[]; documents: MarkdownDocument[] }
 interface StudioState { snapshot: StudioSnapshot; migrationError: string }
 
 const readStudioState = (repository: StudioRepository): StudioState => {
@@ -30,6 +30,7 @@ const readStudioState = (repository: StudioRepository): StudioState => {
       products,
       workItems: products.flatMap(({ id }) => repository.listWorkItems(id)),
       versions: products.flatMap(({ id }) => repository.listVersions(id)),
+      documents: products.flatMap(({ id }) => repository.listDocuments(id)),
     },
     migrationError,
   }
@@ -49,6 +50,10 @@ export default function App({ repository: injectedRepository, initialEntries }: 
   }, [repository])
   const saveVersion = useCallback((version: ProductVersion) => {
     repository.saveVersion(version)
+    setStudioState(readStudioState(repository))
+  }, [repository])
+  const saveDocument = useCallback((document: MarkdownDocument) => {
+    repository.saveDocument(document)
     setStudioState(readStudioState(repository))
   }, [repository])
   const archiveProduct = useCallback((product: Product) => {
@@ -79,7 +84,7 @@ export default function App({ repository: injectedRepository, initialEntries }: 
       <Routes>
         <Route path="/" element={<Navigate to="/products" replace />} />
         <Route path="/products" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductGrid {...snapshot} onSaveProduct={saveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
-        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductDetail {...snapshot} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onArchiveProduct={archiveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
+        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductDetail {...snapshot} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archiveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
         <Route path="*" element={<Navigate to="/products" replace />} />
       </Routes>
     </Router>

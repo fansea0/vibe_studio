@@ -169,7 +169,7 @@ export const seedStudio: StudioData = {
     {
       id: 'flora-product-brief',
       productId: 'flora',
-      name: 'Product brief',
+      name: 'Product-brief.md',
       content: '# Flora\n\nHelp people care for plants with confidence.',
       createdAt: '2025-09-18T08:00:00.000Z',
       updatedAt: '2026-06-18T03:00:00.000Z',
@@ -177,7 +177,7 @@ export const seedStudio: StudioData = {
     {
       id: 'resume-release-notes',
       productId: 'resume-genius',
-      name: 'Beta release notes',
+      name: 'Beta-release-notes.md',
       content: '# Beta release\n\nPDF export and essential resume sections are ready.',
       createdAt: '2026-06-20T08:00:00.000Z',
       updatedAt: '2026-06-30T00:00:00.000Z',
@@ -185,7 +185,7 @@ export const seedStudio: StudioData = {
     {
       id: 'text-war-rules',
       productId: 'text-war',
-      name: 'Game rules',
+      name: 'Game-rules.md',
       content: '# Text War rules\n\nWin rounds by finding the strongest valid word.',
       createdAt: '2025-04-03T08:00:00.000Z',
       updatedAt: '2026-05-10T06:00:00.000Z',

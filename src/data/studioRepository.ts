@@ -105,11 +105,16 @@ const isVersion = (value: unknown): value is ProductVersion =>
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)
 
+const hasMarkdownExtension = (name: string): boolean => /\.(?:md|markdown)$/i.test(name)
+
 const isDocument = (value: unknown): value is MarkdownDocument =>
   isRecord(value) &&
   isString(value.id) &&
   isString(value.productId) &&
   isString(value.name) &&
+  value.name.length > 0 &&
+  value.name === value.name.trim() &&
+  hasMarkdownExtension(value.name) &&
   isString(value.content) &&
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)

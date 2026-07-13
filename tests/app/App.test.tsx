@@ -44,6 +44,21 @@ describe('product workspace', () => {
 
     expect(await screen.findByRole('heading', { name: 'Focus Flow' })).toBeInTheDocument()
     expect(screen.getByText('12')).toBeInTheDocument()
+    const detailNav = screen.getByRole('navigation', { name: '产品详情' })
+    expect(within(detailNav).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      '概览',
+      '任务',
+      '版本',
+      '文档',
+      '设置',
+    ])
+
+    await user.click(within(detailNav).getByRole('link', { name: '任务' }))
+    expect(screen.getByRole('heading', { name: '需求与 Bug' })).toBeInTheDocument()
+    await user.click(within(detailNav).getByRole('link', { name: '版本' }))
+    expect(screen.getByRole('heading', { name: '手动版本' })).toBeInTheDocument()
+    await user.click(within(detailNav).getByRole('link', { name: '文档' }))
+    expect(screen.getByRole('heading', { name: 'Markdown 文档' })).toBeInTheDocument()
   })
 
   it('rejects duplicate names and non-HTTPS app URLs', async () => {

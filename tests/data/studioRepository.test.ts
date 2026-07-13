@@ -48,7 +48,7 @@ const version = (id: string, productId: string): ProductVersion => ({
 const document = (id: string, productId: string): MarkdownDocument => ({
   id,
   productId,
-  name: `Document ${id}`,
+  name: `Document-${id}.md`,
   content: '# Fixture',
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',
@@ -233,6 +233,47 @@ describe('createStudioRepository', () => {
 
     expect(repository.listProducts()).toEqual([product])
     expect(repository.listDocuments(product.id)).toEqual([document('valid', product.id)])
+  })
+
+  it.each([
+    ['missing Markdown extension', { name: 'guide.txt' }],
+    ['empty name', { name: '' }],
+    ['non-string content', { content: null }],
+  ])('rejects invalid saveDocument data: %s', (_case, patch) => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listDocuments('flora')
+    const writesBeforeMutation = storage.writeAttempts
+
+    expect(() => repository.saveDocument({
+      ...document('invalid', 'flora'),
+      ...patch,
+    } as MarkdownDocument)).toThrowError(expect.objectContaining({
+      name: 'RepositoryError',
+      code: 'VALIDATION_FAILED',
+    }))
+    expect(storage.writeAttempts).toBe(writesBeforeMutation)
+  })
+
+  it('salvages valid documents when external storage contains invalid document payloads', () => {
+    const valid = document('valid-markdown', product.id)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      products: [product],
+      workItems: [],
+      versions: [],
+      documents: [
+        valid,
+        { ...document('bad-extension', product.id), name: 'notes.txt' },
+        { ...document('empty-name', product.id), name: '' },
+        { ...document('bad-content', product.id), content: 42 },
+      ],
+    }))
+
+    const repository = createStudioRepository(localStorage)
+
+    expect(repository.listDocuments(product.id)).toEqual([valid])
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').documents).toEqual([valid])
+    expect(repository.listProducts()).toEqual([product])
   })
 
   it.each([
