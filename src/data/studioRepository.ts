@@ -1,7 +1,7 @@
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import { seedStudio, type StudioData } from './seedStudio'
 
-const STORAGE_KEY = 'vibe-studio:v1'
+export const STUDIO_STORAGE_KEY = 'vibe-studio:v1'
 
 const emptyStudio = (): StudioData => ({
   products: [],
@@ -199,7 +199,7 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
 
   const tryRecoveryWrite = (data: StudioData): void => {
     try {
-      storage.setItem(STORAGE_KEY, JSON.stringify(data))
+      storage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(data))
     } catch {
       // Reads remain available from the in-memory snapshot when persistence is unavailable.
     }
@@ -208,7 +208,7 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
   const persistMutation = (data: StudioData): void => {
     const sanitized = sanitizeStudio(data) ?? emptyStudio()
     try {
-      storage.setItem(STORAGE_KEY, JSON.stringify(sanitized))
+      storage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(sanitized))
     } catch (cause) {
       throw new RepositoryError(
         'PERSISTENCE_FAILED',
@@ -222,7 +222,7 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
   const read = (commitSnapshot = true): StudioData => {
     let payload: string | null
     try {
-      payload = storage.getItem(STORAGE_KEY)
+      payload = storage.getItem(STUDIO_STORAGE_KEY)
     } catch {
       return cloneStudio(lastKnownGood)
     }

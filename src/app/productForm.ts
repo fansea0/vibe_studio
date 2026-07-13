@@ -14,6 +14,16 @@ export interface ProductFormValues {
 
 export type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>>
 
+export const getSafeHttpsUrl = (value: string | null): string | null => {
+  if (value === null || value.trim() === '') return null
+  try {
+    const url = new URL(value.trim())
+    return url.protocol === 'https:' && url.hostname !== '' ? url.href : null
+  } catch {
+    return null
+  }
+}
+
 export const productToFormValues = (product?: Product): ProductFormValues => ({
   name: product?.name ?? '',
   description: product?.description ?? '',
@@ -54,8 +64,11 @@ export const validateProductValues = (
   const users = Number(userCountText)
   if (userCountText === '') errors.userCount = '请输入用户数'
   else if (!Number.isInteger(users) || users < 0) errors.userCount = '用户数必须是非负整数'
-  if (values.appUrl.trim() !== '' && !values.appUrl.trim().startsWith('https://')) {
-    errors.appUrl = '应用地址必须以 https:// 开头'
+  const appUrl = values.appUrl.trim()
+  if (appUrl !== '' && getSafeHttpsUrl(appUrl) === null) {
+    errors.appUrl = appUrl.startsWith('https://')
+      ? '请输入有效的 HTTPS 应用地址'
+      : '应用地址必须以 https:// 开头'
   }
   return errors
 }

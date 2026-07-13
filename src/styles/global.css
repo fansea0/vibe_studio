@@ -44,7 +44,7 @@ h1, h2, h3, p { margin-top: 0; }
 .card-metrics strong { color: #2a2e3d; font-size: 15px; }
 .product-card footer { color: #a0a3ad; font-size: 12px; }
 .archive-section { margin-top: 28px; }.text-button { padding: 0; color: #6259e8; background: transparent; }.text-button:hover { background: transparent; color: #433ac5; }
-.archived-grid { display: grid; gap: 10px; margin-top: 14px; }.archived-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid #e6e7ed; border-radius: 13px; background: #fff; }.archived-card h3, .archived-card p { margin-bottom: 4px; }.archived-card p { color: #7c7f8d; font-size: 13px; }
+.archived-grid { display: grid; gap: 10px; margin-top: 14px; }.archived-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid #e6e7ed; border-radius: 13px; background: #fff; }.archived-card h3, .archived-card p { margin-bottom: 4px; }.archived-card p { color: #7c7f8d; font-size: 13px; }.archived-title { display: flex; align-items: center; gap: 9px; }
 .secondary { color: #575b6a; background: #f1f2f6; }.secondary:hover { background: #e6e8ef; }.empty-card, .state-card { padding: 48px; border: 1px dashed #d7d8e2; border-radius: 16px; background: #fff; text-align: center; }.empty-card p, .state-card p { color: #7b7e8c; }
 
 .breadcrumb { display: flex; gap: 8px; margin-bottom: 22px; color: #8d909e; font-size: 13px; }.breadcrumb a { color: #6259e8; text-decoration: none; }

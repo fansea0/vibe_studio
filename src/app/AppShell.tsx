@@ -5,7 +5,7 @@ import type { Product } from '../domain/models'
 interface AppShellProps { products: Product[]; currentProductId?: string; children: ReactNode }
 
 export function AppShell({ products, currentProductId, children }: AppShellProps) {
-  const activeProducts = products.filter(({ archivedAt, status }) => archivedAt === null && status !== 'archived')
+  const activeProducts = products.filter(({ archivedAt }) => archivedAt === null)
   return (
     <div className="workspace">
       <aside className="sidebar">

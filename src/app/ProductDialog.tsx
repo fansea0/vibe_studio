@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { Product } from '../domain/models'
+import { Modal } from './Modal'
 import { ProductFields } from './ProductFields'
 import { createProductId, mergeProductValues, productToFormValues, validateProductValues } from './productForm'
 
@@ -37,15 +38,12 @@ export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: P
   }
 
   return (
-    <div className="dialog-backdrop">
-      <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
-        <div className="dialog-heading"><h2 id="create-title">新建产品</h2><button className="icon-button" onClick={onClose} aria-label="关闭">×</button></div>
-        <form onSubmit={submit} noValidate>
-          <ProductFields values={values} errors={errors} onChange={setValues} />
-          {failure && <p role="alert" className="feedback error">{failure}</p>}
-          <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>取消</button><button type="submit">创建产品</button></div>
-        </form>
-      </section>
-    </div>
+    <Modal title="新建产品" onClose={onClose}>
+      <form onSubmit={submit} noValidate>
+        <ProductFields values={values} errors={errors} onChange={setValues} />
+        {failure && <p role="alert" className="feedback error">{failure}</p>}
+        <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>取消</button><button type="submit">创建产品</button></div>
+      </form>
+    </Modal>
   )
 }

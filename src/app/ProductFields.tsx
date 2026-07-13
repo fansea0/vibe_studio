@@ -1,24 +1,32 @@
-import type { ChangeEvent } from 'react'
+import { cloneElement, type ChangeEvent, type ReactElement } from 'react'
 import type { ProductFormErrors, ProductFormValues } from './productForm'
 
 interface ProductFieldsProps {
   values: ProductFormValues
   errors: ProductFormErrors
   onChange: (values: ProductFormValues) => void
-  allowArchivedStatus?: boolean
 }
 
-export function ProductFields({ values, errors, onChange, allowArchivedStatus = true }: ProductFieldsProps) {
+export function ProductFields({ values, errors, onChange }: ProductFieldsProps) {
   const change = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     onChange({ ...values, [event.target.name]: event.target.value })
 
-  const field = (name: keyof ProductFormValues, label: string, input: React.ReactNode) => (
-    <label className="field">
-      <span>{label}</span>
-      {input}
-      {errors[name] && <small role="alert" className="field-error">{errors[name]}</small>}
-    </label>
-  )
+  const field = (name: keyof ProductFormValues, label: string, input: ReactElement) => {
+    const inputId = `product-${name}`
+    const errorId = `product-${name}-error`
+    const describedInput = cloneElement(input, {
+      id: inputId,
+      'aria-invalid': errors[name] ? true : undefined,
+      'aria-describedby': errors[name] ? errorId : undefined,
+    } as React.HTMLAttributes<HTMLElement>)
+    return (
+    <div className="field">
+      <label htmlFor={inputId}>{label}</label>
+      {describedInput}
+      {errors[name] && <small id={errorId} role="alert" className="field-error">{errors[name]}</small>}
+    </div>
+    )
+  }
 
   return (
     <div className="form-grid">
@@ -31,7 +39,7 @@ export function ProductFields({ values, errors, onChange, allowArchivedStatus = 
       {field('status', '产品状态', (
         <select name="status" value={values.status} onChange={change}>
           <option value="developing">开发中</option><option value="beta">Beta</option>
-          <option value="released">已发布</option>{allowArchivedStatus && <option value="archived">已归档</option>}
+          <option value="released">已发布</option>
         </select>
       ))}
       {field('completionPercent', '完成度', <input name="completionPercent" type="number" min="0" max="100" required value={values.completionPercent} onChange={change} />)}

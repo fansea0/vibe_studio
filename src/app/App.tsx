@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
-import { createStudioRepository, type StudioRepository } from '../data/studioRepository'
+import { createStudioRepository, STUDIO_STORAGE_KEY, type StudioRepository } from '../data/studioRepository'
 import type { Product, ProductVersion, WorkItem } from '../domain/models'
 import { AppShell } from './AppShell'
 import { ProductDetail } from './ProductDetail'
@@ -25,14 +25,30 @@ export default function App({ repository: injectedRepository, initialEntries }: 
     repository.saveProduct(product)
     setSnapshot(readStudioSnapshot(repository))
   }, [repository])
+  const archiveProduct = useCallback((product: Product) => {
+    const now = new Date().toISOString()
+    saveProduct({ ...product, archivedAt: now, updatedAt: now })
+  }, [saveProduct])
+  const restoreProduct = useCallback((product: Product) => {
+    saveProduct({ ...product, archivedAt: null, updatedAt: new Date().toISOString() })
+  }, [saveProduct])
+  useEffect(() => {
+    const refreshFromStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === STUDIO_STORAGE_KEY) {
+        setSnapshot(readStudioSnapshot(repository))
+      }
+    }
+    window.addEventListener('storage', refreshFromStorage)
+    return () => window.removeEventListener('storage', refreshFromStorage)
+  }, [repository])
   const Router = initialEntries ? MemoryRouter : BrowserRouter
 
   return (
     <Router {...(initialEntries ? { initialEntries } : {})}>
       <Routes>
         <Route path="/" element={<Navigate to="/products" replace />} />
-        <Route path="/products" element={<Workspace products={snapshot.products}><ProductGrid {...snapshot} onSaveProduct={saveProduct} /></Workspace>} />
-        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products}><ProductDetail {...snapshot} onSaveProduct={saveProduct} /></Workspace>} />
+        <Route path="/products" element={<Workspace products={snapshot.products}><ProductGrid {...snapshot} onSaveProduct={saveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
+        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products}><ProductDetail {...snapshot} onSaveProduct={saveProduct} onArchiveProduct={archiveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
         <Route path="*" element={<Navigate to="/products" replace />} />
       </Routes>
     </Router>
