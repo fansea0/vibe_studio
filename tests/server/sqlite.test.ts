@@ -67,4 +67,16 @@ describe('sqlite repository', () => {
     expect(() => r.updateVersion(v.id, { status: 'planned', releasedAt: 'bad' })).toThrow(RepositoryError)
     r.close()
   })
+
+  it('maps mutation constraints to RepositoryError and validates work inputs', () => {
+    const r = createSqliteRepository(':memory:'); const p = r.listProducts()[0]
+    const a = r.createDocument(p.id, { name: 'a.md', content: 'a' }); const b = r.createDocument(p.id, { name: 'b.md', content: 'b' })
+    expect(() => r.updateDocument(b.id, { name: a.name })).toThrow(RepositoryError)
+    expect(() => r.createWorkItem(p.id, { type: 'bug', title: '', priority: 'low', dueDate: null, status: 'todo' })).toThrow(RepositoryError)
+    expect(() => r.createWorkItem(p.id, { type: 'bug', title: 'x', priority: 'low', dueDate: '01/01/2026', status: 'todo' })).toThrow(RepositoryError)
+    expect(() => r.createWorkItem(p.id, { type: 'invalid' as any, title: 'x', priority: 'low', dueDate: null, status: 'todo' })).toThrow(RepositoryError)
+    const w = r.createWorkItem(p.id, { type: 'bug', title: 'x', priority: 'low', dueDate: null, status: 'todo' })
+    expect(() => r.updateWorkItem(w.id, { title: '' })).toThrow(RepositoryError)
+    r.close()
+  })
 })
