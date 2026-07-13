@@ -39,6 +39,11 @@ export function Modal({ title, children, onClose, className = '', showCloseButto
     }
   }, [])
 
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (closeDisabled && dialog?.querySelector<HTMLElement>(focusableSelector) === null) dialog.focus()
+  }, [closeDisabled])
+
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -47,7 +52,11 @@ export function Modal({ title, children, onClose, className = '', showCloseButto
     }
     if (event.key !== 'Tab') return
     const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])]
-    if (focusable.length === 0) return
+    if (focusable.length === 0) {
+      event.preventDefault()
+      dialogRef.current?.focus()
+      return
+    }
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
     if (event.shiftKey && document.activeElement === first) {
@@ -61,7 +70,7 @@ export function Modal({ title, children, onClose, className = '', showCloseButto
 
   return (
     <div className="dialog-backdrop">
-      <section ref={dialogRef} className={`dialog ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={handleKeyDown}>
+      <section ref={dialogRef} className={`dialog ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={handleKeyDown}>
         <div className="dialog-heading">
           <h2 id={titleId}>{title}</h2>
           {showCloseButton && <button type="button" className="icon-button" onClick={onClose} aria-label="关闭" data-autofocus disabled={closeDisabled}>×</button>}

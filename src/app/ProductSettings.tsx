@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import type { ProductMutationToken } from '../data/studioRepository'
 import type { Product } from '../domain/models'
 import { Modal } from './Modal'
 import { ProductFields } from './ProductFields'
@@ -8,7 +9,7 @@ import { mutationErrorMessage } from './mutationError'
 interface ProductSettingsProps {
   product: Product
   products: Product[]
-  onSaveProduct: (product: Product) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
   onArchiveProduct: (product: Product) => Promise<void>
   onArchived: () => void
 }
@@ -66,8 +67,11 @@ export function ProductSettings({ product, products, onSaveProduct, onArchivePro
     const updated = mergeProductValues(product, values, new Date().toISOString())
     setBusy(true)
     try {
-      await onSaveProduct(updated)
-      loadedVersion.current = { id: updated.id, updatedAt: updated.updatedAt }
+      await onSaveProduct(updated, { expectedUpdatedAt: loadedVersion.current.updatedAt })
+      loadedVersion.current = {
+        id: latestProduct.current.id,
+        updatedAt: latestProduct.current.updatedAt,
+      }
       setDirty(false)
       setExternalProduct(null)
       setFeedback({ type: 'success', text: '设置已保存' })

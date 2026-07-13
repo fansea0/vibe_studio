@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ProductMutationToken } from '../data/studioRepository'
 import { Link, useNavigate } from 'react-router-dom'
 import type { Product, ProductVersion, WorkItem } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
@@ -10,7 +11,7 @@ interface ProductGridProps {
   products: Product[]
   workItems: WorkItem[]
   versions: ProductVersion[]
-  onSaveProduct: (product: Product) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
   onRestoreProduct: (product: Product) => Promise<void>
 }
 

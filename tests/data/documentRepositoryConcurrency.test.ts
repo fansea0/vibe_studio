@@ -111,7 +111,7 @@ describe('document repository concurrency', () => {
     const repository = createStudioRepository(localStorage, lock)
     const product = repository.listProducts().find(({ id }) => id === 'flora')!
     const documentSave = repository.saveDocument(candidate('mixed', 'mixed.md'), { expectedUpdatedAt: null })
-    const productSave = repository.saveProduct({ ...product, name: 'Locked Flora' })
+    const productSave = repository.saveProduct({ ...product, name: 'Locked Flora' }, { expectedUpdatedAt: product.updatedAt })
     const taskSave = repository.saveWorkItem({
       id: 'locked-task', productId: 'flora', type: 'bug', title: 'Locked', priority: 'medium',
       dueDate: null, status: 'todo', createdAt: product.createdAt, updatedAt: product.updatedAt,
@@ -132,7 +132,8 @@ describe('document repository concurrency', () => {
       versions: expect.arrayContaining([expect.objectContaining({ id: 'locked-version' })]),
     })
 
-    const lateSave = repository.saveProduct({ ...product, name: 'Will reset' })
+    const latestProduct = repository.listProducts().find(({ id }) => id === product.id)!
+    const lateSave = repository.saveProduct({ ...latestProduct, name: 'Will reset' }, { expectedUpdatedAt: latestProduct.updatedAt })
     const reset = repository.reset()
     await lock.releaseNext(); await lateSave
     await lock.releaseNext(); await reset
@@ -142,7 +143,8 @@ describe('document repository concurrency', () => {
   it('surfaces a typed error when the mutation lock is unavailable', async () => {
     const repository = createStudioRepository(localStorage, createUnavailableMutationLock())
 
-    await expect(repository.saveProduct(repository.listProducts()[0]!)).rejects.toMatchObject({
+    const product = repository.listProducts()[0]!
+    await expect(repository.saveProduct(product, { expectedUpdatedAt: product.updatedAt })).rejects.toMatchObject({
       code: 'LOCK_UNAVAILABLE',
     })
   })
@@ -160,5 +162,63 @@ describe('document repository concurrency', () => {
     expect(JSON.parse(localStorage.getItem('vibe-studio:v1') ?? '').documents[0].name).toBe(' guide.md ')
     await lock.releaseNext()
     expect(JSON.parse(localStorage.getItem('vibe-studio:v1') ?? '').documents[0].name).toBe('guide.md')
+  })
+
+  it('enforces product create tokens and normalized unique names', async () => {
+    const lock = new ControlledLock()
+    const repository = createStudioRepository(localStorage, lock)
+    const base = repository.listProducts()[0]!
+    const first = repository.saveProduct({ ...base, id: 'new-a', name: 'Café' }, { expectedUpdatedAt: null })
+    const duplicate = repository.saveProduct({ ...base, id: 'new-b', name: ' CAFE\u0301 ' }, { expectedUpdatedAt: null })
+    await lock.releaseNext(); await first
+    await lock.releaseNext()
+
+    await expect(duplicate).rejects.toMatchObject({ code: 'DUPLICATE_PRODUCT' })
+    const sameId = repository.saveProduct({ ...base, id: 'new-a' }, { expectedUpdatedAt: null })
+    await lock.releaseNext()
+    await expect(sameId).rejects.toMatchObject({ code: 'PRODUCT_CONFLICT' })
+  })
+
+  it('preserves product creation time and rejects stale update tokens', async () => {
+    const repository = createStudioRepository(localStorage)
+    const original = repository.listProducts()[0]!
+    await repository.saveProduct({ ...original, name: 'First update', createdAt: '2040-01-01T00:00:00.000Z' }, { expectedUpdatedAt: original.updatedAt })
+    const current = repository.listProducts().find(({ id }) => id === original.id)!
+    expect(current.createdAt).toBe(original.createdAt)
+    expect(Date.parse(current.updatedAt)).toBeGreaterThan(Date.parse(original.updatedAt))
+
+    await expect(repository.saveProduct({ ...original, name: 'Stale' }, { expectedUpdatedAt: original.updatedAt }))
+      .rejects.toMatchObject({ code: 'PRODUCT_CONFLICT' })
+  })
+
+  it('migrates only legacy lifecycle fields from the latest locked product', async () => {
+    const lock = new ControlledLock()
+    const repository = createStudioRepository(localStorage, lock)
+    const original = repository.listProducts()[0]!
+    localStorage.setItem('vibe-studio:v1', JSON.stringify({
+      ...repository.readSnapshot(),
+      products: [{ ...original, status: 'archived', archivedAt: null }],
+    }))
+    const migration = repository.migrateLegacyProductLifecycle(original.id)
+    const latest = JSON.parse(localStorage.getItem('vibe-studio:v1') ?? '')
+    latest.products[0].name = 'Latest name'
+    latest.products[0].userCount = 999
+    localStorage.setItem('vibe-studio:v1', JSON.stringify(latest))
+    await lock.releaseNext(); await migration
+
+    expect(repository.listProducts()[0]).toMatchObject({
+      name: 'Latest name', userCount: 999, status: 'developing', archivedAt: null,
+    })
+  })
+
+  it('does not rewrite a product whose lifecycle is already valid', async () => {
+    const lock = new ControlledLock()
+    const repository = createStudioRepository(localStorage, lock)
+    const product = repository.listProducts()[0]!
+    const before = localStorage.getItem('vibe-studio:v1')
+    const migration = repository.migrateLegacyProductLifecycle(product.id)
+    await lock.releaseNext(); await migration
+
+    expect(localStorage.getItem('vibe-studio:v1')).toBe(before)
   })
 })

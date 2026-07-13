@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import type { DocumentMutationToken } from '../data/studioRepository'
+import type { DocumentMutationToken, ProductMutationToken } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
 import { DocumentWorkspace } from './DocumentWorkspace'
@@ -16,7 +16,7 @@ interface ProductDetailProps {
   workItems: WorkItem[]
   versions: ProductVersion[]
   documents: MarkdownDocument[]
-  onSaveProduct: (product: Product) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
   onSaveWorkItem: (item: WorkItem) => Promise<void>
   onSaveVersion: (version: ProductVersion) => Promise<void>
   onSaveDocument: (document: MarkdownDocument, token: DocumentMutationToken) => Promise<void>

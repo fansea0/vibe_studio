@@ -74,6 +74,21 @@ describe('product workspace', () => {
     expect(screen.getByText('应用地址必须以 https:// 开头')).toBeInTheDocument()
   })
 
+  it('reports a repository duplicate created after the product dialog opened', async () => {
+    const repository = createStudioRepository(localStorage)
+    const user = userEvent.setup()
+    renderApp('/products', repository)
+    await user.click(screen.getByRole('button', { name: '新建产品' }))
+    await user.type(screen.getByLabelText('产品名称'), 'Race Product')
+    const base = repository.listProducts()[0]!
+    await repository.saveProduct({ ...base, id: 'external-race', name: ' race product ' }, { expectedUpdatedAt: null })
+
+    await user.click(screen.getByRole('button', { name: '创建产品' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('保存失败，请稍后重试')
+    expect(screen.getByRole('dialog', { name: '新建产品' })).toBeInTheDocument()
+  })
+
   it('rejects empty numeric fields when creating and does not persist the product', async () => {
     const repository = createStudioRepository(localStorage)
     const user = userEvent.setup()
@@ -146,7 +161,7 @@ describe('product workspace', () => {
       ...flora,
       status: 'beta',
       archivedAt: '2026-07-13T08:00:00.000Z',
-    })
+    }, { expectedUpdatedAt: flora.updatedAt })
     const user = userEvent.setup()
     renderApp('/products', repository)
 
@@ -189,7 +204,7 @@ describe('product workspace', () => {
     renderApp('/products', repository)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    await repository.saveProduct({ ...flora, name: 'Flora Cross Tab' })
+    await repository.saveProduct({ ...flora, name: 'Flora Cross Tab' }, { expectedUpdatedAt: flora.updatedAt })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(await screen.findByRole('link', { name: /Flora Cross Tab，打开产品详情/ })).toBeInTheDocument()
@@ -198,7 +213,7 @@ describe('product workspace', () => {
   it('restores a legacy archived product into a valid developing lifecycle', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: new Date().toISOString() })
+    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: new Date().toISOString() }, { expectedUpdatedAt: flora.updatedAt })
     const user = userEvent.setup()
     renderApp('/products', repository)
 
@@ -215,7 +230,7 @@ describe('product workspace', () => {
   it('migrates a legacy active archived status when loading the App boundary', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
+    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: null }, { expectedUpdatedAt: flora.updatedAt })
 
     renderApp('/products', repository)
 
@@ -226,10 +241,10 @@ describe('product workspace', () => {
   it('keeps a safe view and reports a failed legacy migration', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: null })
+    await repository.saveProduct({ ...flora, status: 'archived', archivedAt: null }, { expectedUpdatedAt: flora.updatedAt })
     const failingRepository = {
       ...repository,
-      saveProduct: async () => {
+      migrateLegacyProductLifecycle: async () => {
         throw new RepositoryError('PERSISTENCE_FAILED', 'migration failed')
       },
     }
@@ -249,7 +264,7 @@ describe('product workspace', () => {
     await user.type(name, 'Flora Draft')
     const resume = repository.listProducts().find(({ id }) => id === 'resume-genius')!
 
-    await repository.saveProduct({ ...resume, name: 'Resume External', updatedAt: new Date().toISOString() })
+    await repository.saveProduct({ ...resume, name: 'Resume External', updatedAt: new Date().toISOString() }, { expectedUpdatedAt: resume.updatedAt })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(await screen.findByRole('link', { name: /Resume External/ })).toBeInTheDocument()
@@ -266,13 +281,32 @@ describe('product workspace', () => {
     await user.type(name, 'Flora Draft')
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T09:00:00.000Z' })
+    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T09:00:00.000Z' }, { expectedUpdatedAt: flora.updatedAt })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(name).toHaveValue('Flora Draft')
     expect(await screen.findByRole('alert')).toHaveTextContent('当前产品已在其他窗口更新')
     await user.click(screen.getByRole('button', { name: '加载外部版本' }))
     expect(name).toHaveValue('Flora External')
+  })
+
+  it('rejects a stale settings save while preserving its draft and external version action', async () => {
+    const repository = createStudioRepository(localStorage)
+    const user = userEvent.setup()
+    renderApp('/products/flora/settings', repository)
+    const name = screen.getByLabelText('产品名称')
+    await user.clear(name)
+    await user.type(name, 'My draft')
+    const flora = repository.listProducts().find(({ id }) => id === 'flora')!
+    await repository.saveProduct({ ...flora, name: 'External name' }, { expectedUpdatedAt: flora.updatedAt })
+    window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
+
+    await user.click(screen.getByRole('button', { name: '保存设置' }))
+
+    expect(name).toHaveValue('My draft')
+    expect(screen.getAllByRole('alert').some((alert) => alert.textContent?.includes('草稿已保留'))).toBe(true)
+    expect(screen.getByRole('button', { name: '加载外部版本' })).toBeInTheDocument()
+    expect(repository.listProducts().find(({ id }) => id === 'flora')?.name).toBe('External name')
   })
 
   it('clears stale validation errors when loading an external settings version', async () => {
@@ -284,7 +318,7 @@ describe('product workspace', () => {
     expect(screen.getByText('请输入完成度')).toBeInTheDocument()
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T10:00:00.000Z' })
+    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T10:00:00.000Z' }, { expectedUpdatedAt: flora.updatedAt })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
     await user.click(await screen.findByRole('button', { name: '加载外部版本' }))
 
@@ -300,7 +334,7 @@ describe('product workspace', () => {
     expect(screen.getByRole('status')).toHaveTextContent('设置已保存')
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
-    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T11:00:00.000Z' })
+    await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T11:00:00.000Z' }, { expectedUpdatedAt: flora.updatedAt })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
 
     expect(await screen.findByLabelText('产品名称')).toHaveValue('Flora External')
@@ -354,7 +388,7 @@ describe('product workspace', () => {
   it('does not render unsafe persisted app URLs', async () => {
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    await repository.saveProduct({ ...flora, appUrl: 'javascript:alert(1)' })
+    await repository.saveProduct({ ...flora, appUrl: 'javascript:alert(1)' }, { expectedUpdatedAt: flora.updatedAt })
 
     renderApp('/products/flora', repository)
 
@@ -391,7 +425,7 @@ describe('product workspace', () => {
     expect(screen.queryByRole('heading', { name: 'Failure Case' })).not.toBeInTheDocument()
   })
 
-  it('explains when safe cross-window mutation locking is unavailable', async () => {
+  it('creates products through the localStorage lease fallback without Web Locks', async () => {
     const user = userEvent.setup()
     render(<App initialEntries={['/products']} />)
 
@@ -399,7 +433,7 @@ describe('product workspace', () => {
     await user.type(screen.getByLabelText('产品名称'), 'No Lock')
     await user.click(screen.getByRole('button', { name: '创建产品' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('当前浏览器不支持安全的跨窗口写入')
+    expect(await screen.findByRole('heading', { name: 'No Lock' })).toBeInTheDocument()
   })
 
   it('distinguishes missing and archived product routes', async () => {
@@ -409,7 +443,7 @@ describe('product workspace', () => {
 
     const repository = createStudioRepository(localStorage)
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
-    await repository.saveProduct({ ...flora, status: 'beta', archivedAt: new Date().toISOString() })
+    await repository.saveProduct({ ...flora, status: 'beta', archivedAt: new Date().toISOString() }, { expectedUpdatedAt: flora.updatedAt })
     renderApp('/products/flora', repository)
     expect(screen.getByRole('heading', { name: '产品已归档' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '恢复产品' })).toBeInTheDocument()

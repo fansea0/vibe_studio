@@ -26,3 +26,9 @@ npm run build
 ## 数据存储说明
 
 产品、任务、版本和文档数据保存在浏览器 `localStorage` 中，仅属于当前单浏览器的本地数据，用户清理浏览器站点数据时也会被清理。Markdown 文档以文本形式存储，只适合小文件，单个文件上限为 512 KiB；生产环境或大文件场景应改用服务端存储。
+
+多标签写入优先使用浏览器 Web Locks；不支持时使用独立 `localStorage` lease 锁进行有限等待、过期接管和所有权确认。该 fallback 能降低同一浏览器多标签并发覆盖风险，但不替代服务端事务或多设备同步。
+
+## 部署说明
+
+应用使用 `BrowserRouter`。生产服务器必须把未知深链 fallback 到 `index.html`：Nginx 可配置 `try_files $uri $uri/ /index.html`；Vercel 与 Netlify 请启用 SPA rewrite（将 `/*` 重写到 `/index.html`）。

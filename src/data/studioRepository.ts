@@ -3,6 +3,7 @@ import { MAX_MARKDOWN_FILE_BYTES, normalizeDocumentName, utf8ByteLength, validat
 import { seedStudio, type StudioData } from './seedStudio'
 
 export const STUDIO_STORAGE_KEY = 'vibe-studio:v1'
+export const STUDIO_MUTATION_LOCK_KEY = 'vibe-studio:mutation-lock'
 
 const emptyStudio = (): StudioData => ({
   products: [],
@@ -201,7 +202,9 @@ export type RepositoryErrorCode =
   | 'PRODUCT_NOT_FOUND'
   | 'DUPLICATE_VERSION'
   | 'DUPLICATE_DOCUMENT'
+  | 'DUPLICATE_PRODUCT'
   | 'DOCUMENT_CONFLICT'
+  | 'PRODUCT_CONFLICT'
   | 'LOCK_UNAVAILABLE'
 
 export class RepositoryError extends Error {
@@ -236,7 +239,8 @@ const requireProduct = (data: StudioData, productId: string): void => {
 export interface StudioRepository {
   readSnapshot(): StudioData
   listProducts(): Product[]
-  saveProduct(product: Product): Promise<void>
+  saveProduct(product: Product, token: ProductMutationToken): Promise<void>
+  migrateLegacyProductLifecycle(productId: string): Promise<void>
   listWorkItems(productId: string): WorkItem[]
   saveWorkItem(item: WorkItem): Promise<void>
   listVersions(productId: string): ProductVersion[]
@@ -247,9 +251,64 @@ export interface StudioRepository {
 }
 
 export interface DocumentMutationToken { expectedUpdatedAt: string | null }
+export interface ProductMutationToken { expectedUpdatedAt: string | null }
 
 export interface MutationLock {
   request<T>(operation: () => Promise<T> | T): Promise<T>
+}
+
+interface LeaseLockOptions {
+  leaseMs?: number
+  timeoutMs?: number
+  pollMs?: number
+  now?: () => number
+  sleep?: (milliseconds: number) => Promise<void>
+  owner?: string
+}
+
+interface StoredLease { owner: string; expiresAt: number }
+
+const readLease = (storage: Storage): StoredLease | null => {
+  try {
+    const value = JSON.parse(storage.getItem(STUDIO_MUTATION_LOCK_KEY) ?? 'null') as unknown
+    return isRecord(value) && isString(value.owner) && isNumber(value.expiresAt)
+      ? { owner: value.owner, expiresAt: value.expiresAt }
+      : null
+  } catch { return null }
+}
+
+export const createLocalStorageLeaseMutationLock = (
+  storage: Storage,
+  options: LeaseLockOptions = {},
+): MutationLock => {
+  const now = options.now ?? Date.now
+  const sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)))
+  const owner = options.owner ?? (globalThis.crypto?.randomUUID?.() ?? `lease-${Math.random()}`)
+  const leaseMs = options.leaseMs ?? 2_000
+  const timeoutMs = options.timeoutMs ?? 2_000
+  const pollMs = options.pollMs ?? 15
+  return {
+    request: async <T,>(operation: () => Promise<T> | T): Promise<T> => {
+      const startedAt = now()
+      while (true) {
+        const currentTime = now()
+        const current = readLease(storage)
+        if (current === null || current.expiresAt <= currentTime || current.owner === owner) {
+          storage.setItem(STUDIO_MUTATION_LOCK_KEY, JSON.stringify({ owner, expiresAt: currentTime + leaseMs }))
+          if (readLease(storage)?.owner === owner) break
+        }
+        if (currentTime - startedAt >= timeoutMs) {
+          throw new RepositoryError('LOCK_UNAVAILABLE', 'Timed out acquiring the Studio mutation lock.')
+        }
+        await sleep(pollMs)
+      }
+      try {
+        return await operation()
+      } finally {
+        if (readLease(storage)?.owner === owner) storage.removeItem(STUDIO_MUTATION_LOCK_KEY)
+      }
+    },
+  }
 }
 
 const storageMutationQueues = new WeakMap<Storage, Promise<void>>()
@@ -348,10 +407,40 @@ export const createStudioRepository = (
   return {
     readSnapshot: () => read(),
     listProducts: () => read().products,
-    saveProduct: (product) => mutationLock.request(() => {
-      const validProduct = requireValid(product, isProduct)
+    saveProduct: (product, token) => mutationLock.request(() => {
       const data = read(false)
+      const stored = data.products.find(({ id }) => id === product.id)
+      if (!isRecord(token) || !(token.expectedUpdatedAt === null || isString(token.expectedUpdatedAt))) {
+        throw new RepositoryError('VALIDATION_FAILED', 'Product mutation token is required.')
+      }
+      if (
+        (token.expectedUpdatedAt === null && stored !== undefined) ||
+        (token.expectedUpdatedAt !== null && stored?.updatedAt !== token.expectedUpdatedAt)
+      ) throw new RepositoryError('PRODUCT_CONFLICT', 'Product changed since it was loaded.')
+      const name = isString(product.name) ? product.name.trim().normalize('NFC') : product.name
+      const now = Date.now()
+      const updatedAt = new Date(stored ? Math.max(now, Date.parse(stored.updatedAt) + 1) : now).toISOString()
+      const validProduct = requireValid({
+        ...product,
+        name,
+        createdAt: stored?.createdAt ?? updatedAt,
+        updatedAt,
+      }, isProduct)
+      const normalizedName = validProduct.name.toLowerCase()
+      if (data.products.some((candidate) =>
+        candidate.id !== validProduct.id && candidate.name.trim().normalize('NFC').toLowerCase() === normalizedName,
+      )) throw new RepositoryError('DUPLICATE_PRODUCT', `Product name "${validProduct.name}" already exists.`)
       persistMutation({ ...data, products: upsertProduct(data.products, validProduct) })
+    }),
+    migrateLegacyProductLifecycle: (productId) => mutationLock.request(() => {
+      const data = read(false)
+      const stored = data.products.find(({ id }) => id === productId)
+      if (!stored || stored.status !== 'archived' || stored.archivedAt !== null) return
+      const updatedAt = new Date(Math.max(Date.now(), Date.parse(stored.updatedAt) + 1)).toISOString()
+      persistMutation({
+        ...data,
+        products: upsertProduct(data.products, { ...stored, status: 'developing', updatedAt }),
+      })
     }),
     listWorkItems: (productId) => read().workItems.filter((item) => item.productId === productId),
     saveWorkItem: (item) => mutationLock.request(() => {

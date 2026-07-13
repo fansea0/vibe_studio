@@ -13,5 +13,8 @@ describe('README', () => {
     expect(readme).toMatch(/用户.*清理/s)
     expect(readme).toMatch(/Markdown.*文本.*小文件/s)
     expect(readme).toMatch(/生产.*大文件.*服务端/s)
+    expect(readme).toMatch(/Web Locks.*localStorage.*lease/s)
+    expect(readme).toMatch(/BrowserRouter.*index\.html/s)
+    expect(readme).toMatch(/Nginx.*Vercel.*Netlify/s)
   })
 })

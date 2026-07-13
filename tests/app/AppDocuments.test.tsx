@@ -454,6 +454,8 @@ describe('Markdown document workspace', () => {
     await user.click(within(dialog).getByRole('button', { name: '覆盖现有文档' }))
     fireEvent.keyDown(dialog, { key: 'Escape' })
     expect(screen.getByRole('dialog', { name: '文档名称冲突' })).toBeInTheDocument()
+    await user.tab()
+    expect(dialog).toHaveFocus()
 
     await act(async () => { resolveSave(); await Promise.resolve() })
     expect(screen.queryByRole('dialog', { name: '文档名称冲突' })).not.toBeInTheDocument()

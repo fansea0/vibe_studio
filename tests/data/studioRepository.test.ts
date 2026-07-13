@@ -102,9 +102,9 @@ describe('createStudioRepository', () => {
 
     expect(repository.listProducts()).toEqual(seedStudio.products)
 
-    await repository.saveProduct(product)
+    await repository.saveProduct(product, { expectedUpdatedAt: null })
 
-    expect(repository.listProducts()).toContainEqual(product)
+    expect(repository.listProducts()).toContainEqual(expect.objectContaining({ id: product.id, name: product.name }))
   })
 
   it('isolates every child record collection by productId', async () => {
@@ -145,8 +145,9 @@ describe('createStudioRepository', () => {
 
   it('updates records with the same id instead of appending duplicates', async () => {
     const repository = createStudioRepository(localStorage)
-    await repository.saveProduct(product)
-    await repository.saveProduct({ ...product, name: 'Renamed Product' })
+    await repository.saveProduct(product, { expectedUpdatedAt: null })
+    const storedProduct = repository.listProducts().find(({ id }) => id === product.id)!
+    await repository.saveProduct({ ...product, name: 'Renamed Product' }, { expectedUpdatedAt: storedProduct.updatedAt })
     await repository.saveWorkItem(workItem('item-a', product.id))
     await repository.saveWorkItem({ ...workItem('item-a', product.id), title: 'Updated item' })
 
@@ -540,10 +541,10 @@ describe('createStudioRepository', () => {
     const storage = new FaultyStorage()
     const repository = createStudioRepository(storage)
     repository.listProducts()
-    await repository.saveProduct(product)
+    await repository.saveProduct(product, { expectedUpdatedAt: null })
     storage.failReads = true
 
-    expect(repository.listProducts()).toContainEqual(product)
+    expect(repository.listProducts()).toContainEqual(expect.objectContaining({ id: product.id, name: product.name }))
   })
 
   it('uses a safe seed snapshot when the first storage read fails', () => {
@@ -567,7 +568,7 @@ describe('createStudioRepository', () => {
     repository.listProducts()
     storage.failWrites = true
 
-    await expect(repository.saveProduct(product)).rejects.toMatchObject({ name: 'RepositoryError', code: 'PERSISTENCE_FAILED' })
+    await expect(repository.saveProduct(product, { expectedUpdatedAt: null })).rejects.toMatchObject({ name: 'RepositoryError', code: 'PERSISTENCE_FAILED' })
     storage.failReads = true
     expect(repository.listProducts()).not.toContainEqual(product)
   })
@@ -593,7 +594,7 @@ describe('createStudioRepository', () => {
     const writesBeforeMutation = storage.writeAttempts
     const invalidProduct = { ...seedStudio.products[0], ...patch }
 
-    await expect(repository.saveProduct(invalidProduct)).rejects.toMatchObject({ name: 'RepositoryError', code: 'VALIDATION_FAILED' })
+    await expect(repository.saveProduct(invalidProduct, { expectedUpdatedAt: invalidProduct.updatedAt })).rejects.toMatchObject({ name: 'RepositoryError', code: 'VALIDATION_FAILED' })
     expect(storage.writeAttempts).toBe(writesBeforeMutation)
 
     storage.failReads = true
@@ -627,7 +628,7 @@ describe('createStudioRepository', () => {
     const storage = new FaultyStorage()
     const repository = createStudioRepository(storage)
     repository.listProducts()
-    await repository.saveProduct(product)
+    await repository.saveProduct(product, { expectedUpdatedAt: null })
     const expectedSnapshot = repository.listProducts()
     storage.data.set(STORAGE_KEY, JSON.stringify(seedStudio))
     const writesBeforeMutation = storage.writeAttempts
@@ -644,12 +645,12 @@ describe('createStudioRepository', () => {
     const repository = createStudioRepository(storage)
     repository.listProducts()
 
-    await expect(repository.saveProduct({ ...product, completionPercent: 101 })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveProduct({ ...product, completionPercent: 101 }, { expectedUpdatedAt: null })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
 
-    await repository.saveProduct(product)
+    await repository.saveProduct(product, { expectedUpdatedAt: null })
     await repository.saveWorkItem(workItem('valid-after-rejection', product.id))
 
-    expect(repository.listProducts()).toContainEqual(product)
+    expect(repository.listProducts()).toContainEqual(expect.objectContaining({ id: product.id, name: product.name }))
     expect(repository.listWorkItems(product.id)).toContainEqual(
       workItem('valid-after-rejection', product.id),
     )

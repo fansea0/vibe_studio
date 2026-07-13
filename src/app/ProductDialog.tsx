@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import type { ProductMutationToken } from '../data/studioRepository'
 import type { Product } from '../domain/models'
 import { Modal } from './Modal'
 import { ProductFields } from './ProductFields'
@@ -7,7 +8,7 @@ import { mutationErrorMessage } from './mutationError'
 
 interface ProductDialogProps {
   products: Product[]
-  onSaveProduct: (product: Product) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
   onClose: () => void
   onCreated: (product: Product) => void
 }
@@ -33,7 +34,7 @@ export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: P
     const product = mergeProductValues(base, values, now)
     setBusy(true)
     try {
-      await onSaveProduct(product)
+      await onSaveProduct(product, { expectedUpdatedAt: null })
       onCreated(product)
     } catch (error) {
       setFailure(mutationErrorMessage(error, '保存失败，请稍后重试'))
