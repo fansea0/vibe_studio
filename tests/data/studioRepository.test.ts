@@ -21,6 +21,7 @@ const product: Product = {
   userCount: 42,
   userCountSource: 'test',
   appUrl: null,
+  repositoryPath: '',
   archivedAt: null,
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',

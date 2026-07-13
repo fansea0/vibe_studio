@@ -46,6 +46,7 @@ export function ProductFields({ values, errors, onChange }: ProductFieldsProps) 
       {field('userCount', '用户数', <input name="userCount" type="number" min="0" required value={values.userCount} onChange={change} />)}
       {field('userCountSource', '用户数来源', <input name="userCountSource" value={values.userCountSource} onChange={change} />)}
       {field('appUrl', '应用地址', <input name="appUrl" type="url" placeholder="https://" value={values.appUrl} onChange={change} />)}
+      <div className="span-2">{field('repositoryPath', 'Git 仓库绝对路径', <input name="repositoryPath" placeholder="/Users/me/project" value={values.repositoryPath} onChange={change} />)}</div>
     </div>
   )
 }

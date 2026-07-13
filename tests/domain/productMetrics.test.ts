@@ -14,6 +14,7 @@ const product: Product = {
   userCount: 1280,
   userCountSource: 'analytics',
   appUrl: 'https://flora.example.com',
+  repositoryPath: '',
   archivedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',

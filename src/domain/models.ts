@@ -15,10 +15,14 @@ export interface Product {
   userCount: number
   userCountSource: string
   appUrl: string | null
+  repositoryPath: string
+  isDeleted?: boolean
   archivedAt: string | null
   createdAt: string
   updatedAt: string
 }
+
+export interface CommitSummary { sha: string; shortSha: string; author: string; committedAt: string; subject: string }
 
 export interface WorkItem {
   id: string

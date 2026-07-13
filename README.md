@@ -15,7 +15,7 @@ npm install
 ## 常用命令
 
 ```bash
-npm run dev
+npm run dev # http://localhost:6000
 npm test -- --run
 npm run typecheck:test
 npm run build
@@ -25,9 +25,15 @@ npm run build
 
 ## 数据存储说明
 
-产品、任务、版本和文档数据保存在浏览器 `localStorage` 中，仅属于当前单浏览器的本地数据，用户清理浏览器站点数据时也会被清理。Markdown 文档以文本形式存储，只适合小文件，单个文件上限为 512 KiB；生产环境或大文件场景应改用服务端存储。
+产品、任务、版本和 Markdown 文档数据由 Vite 本地 API 写入 SQLite，默认文件为 `data/vibe-studio.sqlite`。本版本不迁移旧的 `localStorage` 数据；首次启动使用空数据库。Markdown 文档仅支持 `.md`/`.markdown`，单个文件上限为 512 KiB。
 
-多标签写入优先使用浏览器 Web Locks；不支持时使用 IndexedDB `readwrite` transaction fallback，让同一浏览器的多个标签页按事务顺序执行同步读改写。该机制不替代服务端事务或多设备同步。若 Web Locks 与 IndexedDB 均不可用，应用仍可读取本地数据，但会禁用写操作并提示无法安全写入。
+旧版 `localStorage` 仅属于单浏览器，用户清理浏览器站点数据会清除旧数据；新 SQLite 数据不受该操作影响。Markdown 仍以文本形式存储，适合小文件；生产环境的大文件应使用服务端存储。
+
+旧版多标签方案曾使用 Web Locks 与 IndexedDB `readwrite` transaction；当 Web Locks 与 IndexedDB 不可用时会禁用写操作。该兼容说明仅针对旧版 localStorage 仓储，当前 SQLite API 使用服务端事务。
+
+每个产品在设置中填写本机 Git 仓库的绝对路径。工作台首次加载产品时读取最新提交，并每 60 秒刷新一次；Git 读取失败只显示提示，不影响产品、任务和文档数据。
+
+SQLite API 与前端由 Vite 插件在同一端口提供，开发地址固定为 `http://localhost:6000`。
 
 ## 部署说明
 

@@ -9,7 +9,7 @@ import { mutationErrorMessage } from './mutationError'
 interface ProductSettingsProps {
   product: Product
   products: Product[]
-  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<Product | void>
   onArchiveProduct: (product: Product) => Promise<void>
   onArchived: () => void
 }
