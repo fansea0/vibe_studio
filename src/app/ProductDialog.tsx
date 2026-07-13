@@ -8,7 +8,7 @@ import { mutationErrorMessage } from './mutationError'
 
 interface ProductDialogProps {
   products: Product[]
-  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<Product | void>
   onClose: () => void
   onCreated: (product: Product) => void
 }
@@ -34,8 +34,8 @@ export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: P
     const product = mergeProductValues(base, values, now)
     setBusy(true)
     try {
-      await onSaveProduct(product, { expectedUpdatedAt: null })
-      onCreated(product)
+      const saved = await onSaveProduct(product, { expectedUpdatedAt: null })
+      onCreated(saved ?? product)
     } catch (error) {
       setFailure(mutationErrorMessage(error, '保存失败，请稍后重试'))
     } finally {

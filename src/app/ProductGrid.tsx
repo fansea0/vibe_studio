@@ -6,12 +6,13 @@ import { deriveProductMetrics } from '../domain/productMetrics'
 import { ProductDialog } from './ProductDialog'
 import { productStatusLabels } from './productPresentation'
 import { mutationErrorMessage } from './mutationError'
+import { useCommitPolling } from '../client/useCommitPolling'
 
 interface ProductGridProps {
   products: Product[]
   workItems: WorkItem[]
   versions: ProductVersion[]
-  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<Product | void>
   onRestoreProduct: (product: Product) => Promise<void>
 }
 
@@ -39,12 +40,7 @@ export function ProductGrid({ products, workItems, versions, onSaveProduct, onRe
       <section className="product-grid" aria-label="活跃产品">
         {active.map((product) => {
           const metrics = deriveProductMetrics(product, workItems, versions)
-          return <Link className="product-card" to={`/products/${product.id}`} key={product.id} aria-label={`${product.name}，打开产品详情`}>
-            <div className="card-top"><span className="product-icon">{product.icon}</span><span className={`status status-${product.status}`}>{productStatusLabels[product.status]}</span></div>
-            <h2>{product.name}</h2><p className="description">{product.description || '暂未填写产品描述。'}</p>
-            <div className="card-metrics"><span><strong>{metrics.openRequirementCount}</strong> 未完成需求</span><span><strong>{metrics.openBugCount}</strong> 未关闭 Bug</span><span><strong>{metrics.userCount.toLocaleString()}</strong> 用户</span><span><strong>{metrics.currentVersion}</strong> 当前版本</span></div>
-            <footer>更新于 {new Date(product.updatedAt).toLocaleDateString('zh-CN')}</footer>
-          </Link>
+          return <ProductCard product={product} metrics={metrics} key={product.id} />
         })}
       </section>
       {active.length === 0 && <div className="empty-card"><h2>还没有活跃产品</h2><p>新建产品，或从归档区恢复已有产品。</p></div>}
@@ -52,4 +48,15 @@ export function ProductGrid({ products, workItems, versions, onSaveProduct, onRe
       {creating && <ProductDialog products={products} onSaveProduct={onSaveProduct} onClose={() => setCreating(false)} onCreated={(product) => { setCreating(false); navigate(`/products/${product.id}`) }} />}
     </>
   )
+}
+
+function ProductCard({ product, metrics }: { product: Product; metrics: ReturnType<typeof deriveProductMetrics> }) {
+  const { commits, loading, error } = useCommitPolling(product.id, 1)
+  const latest = commits[0]
+  return <Link className="product-card" to={`/products/${product.id}`} aria-label={`${product.name}，打开产品详情`}>
+    <div className="card-top"><span className="product-icon">{product.icon}</span><span className={`status status-${product.status}`}>{productStatusLabels[product.status]}</span></div>
+    <h2>{product.name}</h2><p className="description">{product.description || '暂未填写产品描述。'}</p>
+    <div className="card-metrics"><span><strong>{metrics.openRequirementCount}</strong> 未完成需求</span><span><strong>{metrics.openBugCount}</strong> 未关闭 Bug</span><span><strong>{metrics.userCount.toLocaleString()}</strong> 用户</span><span><strong>{metrics.currentVersion}</strong> 当前版本</span></div>
+    <footer>{loading ? '正在读取 Git 更新…' : latest ? <>最新更新：{latest.subject} <code>{latest.shortSha}</code></> : error ? error : '暂无 Git 提交记录'}</footer>
+  </Link>
 }

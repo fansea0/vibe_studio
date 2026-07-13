@@ -16,7 +16,7 @@ interface ProductDetailProps {
   workItems: WorkItem[]
   versions: ProductVersion[]
   documents: MarkdownDocument[]
-  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<void>
+  onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<Product | void>
   onSaveWorkItem: (item: WorkItem) => Promise<void>
   onSaveVersion: (version: ProductVersion) => Promise<void>
   onSaveDocument: (document: MarkdownDocument, token: DocumentMutationToken) => Promise<void>
