@@ -11,6 +11,8 @@ const emptyStudio = (): StudioData => ({
 })
 
 const cloneSeed = (): StudioData => JSON.parse(JSON.stringify(seedStudio)) as StudioData
+const cloneStudio = (data: StudioData): StudioData =>
+  JSON.parse(JSON.stringify(data)) as StudioData
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -62,7 +64,12 @@ const isProduct = (value: unknown): value is Product =>
   isString(value.icon) &&
   isOneOf(value.status, ['developing', 'beta', 'released', 'archived']) &&
   isNumber(value.completionPercent) &&
+  Number.isInteger(value.completionPercent) &&
+  value.completionPercent >= 0 &&
+  value.completionPercent <= 100 &&
   isNumber(value.userCount) &&
+  Number.isInteger(value.userCount) &&
+  value.userCount >= 0 &&
   isString(value.userCountSource) &&
   isNullableString(value.appUrl) &&
   isNullableIsoDate(value.archivedAt) &&
@@ -101,28 +108,56 @@ const isDocument = (value: unknown): value is MarkdownDocument =>
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)
 
-const isProductRecords = (value: unknown): boolean =>
-  Array.isArray(value) && value.every(isProduct)
-
-const isStudioData = (value: unknown): value is StudioData => {
-  if (!isRecord(value)) return false
-
-  return (
-    isProductRecords(value.products) &&
-    Array.isArray(value.workItems) &&
-    value.workItems.every(isWorkItem) &&
-    Array.isArray(value.versions) &&
-    value.versions.every(isVersion) &&
-    Array.isArray(value.documents) &&
-    value.documents.every(isDocument)
-  )
+const validRecords = <T>(value: unknown, validate: (record: unknown) => record is T): T[] => {
+  if (!Array.isArray(value)) return []
+  return value.filter(validate)
 }
 
-const upsert = <T extends { id: string }>(records: T[], record: T): T[] => {
+const sanitizeStudio = (value: unknown): StudioData | null => {
+  if (!isRecord(value)) return null
+
+  const products = validRecords(value.products, isProduct)
+  const productIds = new Set(products.map(({ id }) => id))
+  const belongsToProduct = <T extends { productId: string }>(record: T): boolean =>
+    productIds.has(record.productId)
+
+  return {
+    products,
+    workItems: validRecords(value.workItems, isWorkItem).filter(belongsToProduct),
+    versions: validRecords(value.versions, isVersion).filter(belongsToProduct),
+    documents: validRecords(value.documents, isDocument).filter(belongsToProduct),
+  }
+}
+
+const upsertProduct = <T extends { id: string }>(records: T[], record: T): T[] => {
   const existingIndex = records.findIndex(({ id }) => id === record.id)
   if (existingIndex === -1) return [...records, record]
 
   return records.map((existing, index) => (index === existingIndex ? record : existing))
+}
+
+const upsertChild = <T extends { id: string; productId: string }>(
+  records: T[],
+  record: T,
+): T[] => {
+  const existingIndex = records.findIndex(
+    ({ id, productId }) => id === record.id && productId === record.productId,
+  )
+  if (existingIndex === -1) return [...records, record]
+
+  return records.map((existing, index) => (index === existingIndex ? record : existing))
+}
+
+export type RepositoryErrorCode = 'PERSISTENCE_FAILED'
+
+export class RepositoryError extends Error {
+  readonly code: RepositoryErrorCode
+
+  constructor(code: RepositoryErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'RepositoryError'
+    this.code = code
+  }
 }
 
 export interface StudioRepository {
@@ -138,46 +173,87 @@ export interface StudioRepository {
 }
 
 export const createStudioRepository = (storage: Storage): StudioRepository => {
-  const write = (data: StudioData): void => {
-    storage.setItem(STORAGE_KEY, JSON.stringify(data))
+  let lastKnownGood = cloneSeed()
+
+  const tryRecoveryWrite = (data: StudioData): void => {
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(data))
+    } catch {
+      // Reads remain available from the in-memory snapshot when persistence is unavailable.
+    }
+  }
+
+  const persistMutation = (data: StudioData): void => {
+    const sanitized = sanitizeStudio(data) ?? emptyStudio()
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(sanitized))
+    } catch (cause) {
+      throw new RepositoryError(
+        'PERSISTENCE_FAILED',
+        'Studio changes could not be persisted.',
+        { cause },
+      )
+    }
+    lastKnownGood = cloneStudio(sanitized)
   }
 
   const read = (): StudioData => {
-    const payload = storage.getItem(STORAGE_KEY)
+    let payload: string | null
+    try {
+      payload = storage.getItem(STORAGE_KEY)
+    } catch {
+      return cloneStudio(lastKnownGood)
+    }
+
     if (payload === null) {
       const seeded = cloneSeed()
-      write(seeded)
-      return seeded
+      lastKnownGood = cloneStudio(seeded)
+      tryRecoveryWrite(seeded)
+      return cloneStudio(seeded)
     }
 
+    let parsed: unknown
     try {
-      const parsed: unknown = JSON.parse(payload)
-      if (isStudioData(parsed)) return parsed
+      parsed = JSON.parse(payload)
     } catch {
-      // Invalid persisted data is replaced below with a known-good snapshot.
+      const recovered = cloneStudio(lastKnownGood)
+      tryRecoveryWrite(recovered)
+      return recovered
     }
 
-    const recovered = cloneSeed()
-    write(recovered)
-    return recovered
-  }
+    const sanitized = sanitizeStudio(parsed)
+    if (sanitized === null) {
+      const recovered = cloneStudio(lastKnownGood)
+      tryRecoveryWrite(recovered)
+      return recovered
+    }
 
-  const save = <K extends keyof StudioData>(key: K, record: StudioData[K][number]): void => {
-    const data = read()
-    const records = data[key] as Array<{ id: string }>
-    data[key] = upsert(records, record) as StudioData[K]
-    write(data)
+    lastKnownGood = cloneStudio(sanitized)
+    if (JSON.stringify(sanitized) !== payload) tryRecoveryWrite(sanitized)
+    return cloneStudio(sanitized)
   }
 
   return {
     listProducts: () => read().products,
-    saveProduct: (product) => save('products', product),
+    saveProduct: (product) => {
+      const data = read()
+      persistMutation({ ...data, products: upsertProduct(data.products, product) })
+    },
     listWorkItems: (productId) => read().workItems.filter((item) => item.productId === productId),
-    saveWorkItem: (item) => save('workItems', item),
+    saveWorkItem: (item) => {
+      const data = read()
+      persistMutation({ ...data, workItems: upsertChild(data.workItems, item) })
+    },
     listVersions: (productId) => read().versions.filter((version) => version.productId === productId),
-    saveVersion: (version) => save('versions', version),
+    saveVersion: (version) => {
+      const data = read()
+      persistMutation({ ...data, versions: upsertChild(data.versions, version) })
+    },
     listDocuments: (productId) => read().documents.filter((document) => document.productId === productId),
-    saveDocument: (document) => save('documents', document),
-    reset: () => write(emptyStudio()),
+    saveDocument: (document) => {
+      const data = read()
+      persistMutation({ ...data, documents: upsertChild(data.documents, document) })
+    },
+    reset: () => persistMutation(emptyStudio()),
   }
 }

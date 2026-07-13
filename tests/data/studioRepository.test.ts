@@ -54,6 +54,38 @@ const document = (id: string, productId: string): MarkdownDocument => ({
   updatedAt: '2026-07-01T00:00:00.000Z',
 })
 
+class FaultyStorage implements Storage {
+  readonly data = new Map<string, string>()
+  failReads = false
+  failWrites = false
+
+  get length(): number {
+    return this.data.size
+  }
+
+  clear(): void {
+    this.data.clear()
+  }
+
+  getItem(key: string): string | null {
+    if (this.failReads) throw new DOMException('Storage read denied', 'SecurityError')
+    return this.data.get(key) ?? null
+  }
+
+  key(index: number): string | null {
+    return [...this.data.keys()][index] ?? null
+  }
+
+  removeItem(key: string): void {
+    this.data.delete(key)
+  }
+
+  setItem(key: string, value: string): void {
+    if (this.failWrites) throw new DOMException('Storage quota exceeded', 'QuotaExceededError')
+    this.data.set(key, value)
+  }
+}
+
 describe('createStudioRepository', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -71,16 +103,40 @@ describe('createStudioRepository', () => {
 
   it('isolates every child record collection by productId', () => {
     const repository = createStudioRepository(localStorage)
-    repository.saveWorkItem(workItem('item-a', 'product-a'))
-    repository.saveWorkItem(workItem('item-b', 'product-b'))
-    repository.saveVersion(version('version-a', 'product-a'))
-    repository.saveVersion(version('version-b', 'product-b'))
-    repository.saveDocument(document('document-a', 'product-a'))
-    repository.saveDocument(document('document-b', 'product-b'))
+    repository.saveWorkItem(workItem('item-a', 'flora'))
+    repository.saveWorkItem(workItem('item-b', 'resume-genius'))
+    repository.saveVersion(version('version-a', 'flora'))
+    repository.saveVersion(version('version-b', 'resume-genius'))
+    repository.saveDocument(document('document-a', 'flora'))
+    repository.saveDocument(document('document-b', 'resume-genius'))
 
-    expect(repository.listWorkItems('product-a').map(({ id }) => id)).toEqual(['item-a'])
-    expect(repository.listVersions('product-a').map(({ id }) => id)).toEqual(['version-a'])
-    expect(repository.listDocuments('product-a').map(({ id }) => id)).toEqual(['document-a'])
+    expect(repository.listWorkItems('flora').map(({ id }) => id)).toContain('item-a')
+    expect(repository.listVersions('flora').map(({ id }) => id)).toContain('version-a')
+    expect(repository.listDocuments('flora').map(({ id }) => id)).toContain('document-a')
+  })
+
+  it('keeps child records with the same id when their productId differs', () => {
+    const repository = createStudioRepository(localStorage)
+
+    repository.saveWorkItem(workItem('shared', 'flora'))
+    repository.saveWorkItem(workItem('shared', 'resume-genius'))
+    repository.saveVersion(version('shared', 'flora'))
+    repository.saveVersion(version('shared', 'resume-genius'))
+    repository.saveDocument(document('shared', 'flora'))
+    repository.saveDocument(document('shared', 'resume-genius'))
+
+    expect(repository.listWorkItems('flora')).toContainEqual(workItem('shared', 'flora'))
+    expect(repository.listWorkItems('resume-genius')).toContainEqual(
+      workItem('shared', 'resume-genius'),
+    )
+    expect(repository.listVersions('flora')).toContainEqual(version('shared', 'flora'))
+    expect(repository.listVersions('resume-genius')).toContainEqual(
+      version('shared', 'resume-genius'),
+    )
+    expect(repository.listDocuments('flora')).toContainEqual(document('shared', 'flora'))
+    expect(repository.listDocuments('resume-genius')).toContainEqual(
+      document('shared', 'resume-genius'),
+    )
   })
 
   it('updates records with the same id instead of appending duplicates', () => {
@@ -128,10 +184,10 @@ describe('createStudioRepository', () => {
     const repository = createStudioRepository(localStorage)
 
     expect(() => repository.listWorkItems('flora')).not.toThrow()
-    expect(repository.listProducts()).toEqual(seedStudio.products)
+    expect(repository.listProducts()).toEqual([])
   })
 
-  it('rejects records with missing required fields and rewrites seed data', () => {
+  it('drops records with missing required fields and rewrites cleaned data', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ products: [{ id: 'broken' }], workItems: [], versions: [], documents: [] }),
@@ -139,8 +195,8 @@ describe('createStudioRepository', () => {
 
     const repository = createStudioRepository(localStorage)
 
-    expect(repository.listProducts()).toEqual(seedStudio.products)
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').products).toEqual(seedStudio.products)
+    expect(repository.listProducts()).toEqual([])
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').products).toEqual([])
   })
 
   it.each(['July 1, 2026', '2026-02-30T00:00:00.000Z'])(
@@ -156,7 +212,138 @@ describe('createStudioRepository', () => {
 
       const repository = createStudioRepository(localStorage)
 
-      expect(repository.listProducts()).toEqual(seedStudio.products)
+      expect(repository.listProducts()).toEqual([])
     },
   )
+
+  it('keeps valid custom data when one document is damaged', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        products: [product],
+        workItems: [],
+        versions: [],
+        documents: [document('valid', product.id), { id: 'broken', productId: product.id }],
+      }),
+    )
+
+    const repository = createStudioRepository(localStorage)
+
+    expect(repository.listProducts()).toEqual([product])
+    expect(repository.listDocuments(product.id)).toEqual([document('valid', product.id)])
+  })
+
+  it.each([
+    ['completion below zero', { completionPercent: -1 }],
+    ['completion above one hundred', { completionPercent: 101 }],
+    ['fractional completion', { completionPercent: 50.5 }],
+    ['negative user count', { userCount: -1 }],
+    ['fractional user count', { userCount: 1.5 }],
+  ])('drops a product with invalid %s', (_case, override) => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        products: [{ ...product, ...override }],
+        workItems: [],
+        versions: [],
+        documents: [],
+      }),
+    )
+
+    expect(createStudioRepository(localStorage).listProducts()).toEqual([])
+  })
+
+  it('keeps completion and user count boundary values', () => {
+    const zeroProduct = { ...product, id: 'zero', completionPercent: 0, userCount: 0 }
+    const completeProduct = { ...product, id: 'complete', completionPercent: 100 }
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        products: [zeroProduct, completeProduct],
+        workItems: [],
+        versions: [],
+        documents: [],
+      }),
+    )
+
+    expect(createStudioRepository(localStorage).listProducts()).toEqual([
+      zeroProduct,
+      completeProduct,
+    ])
+  })
+
+  it('drops orphan child records whose productId has no product', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        products: [product],
+        workItems: [workItem('valid', product.id), workItem('orphan', 'missing')],
+        versions: [version('valid', product.id), version('orphan', 'missing')],
+        documents: [document('valid', product.id), document('orphan', 'missing')],
+      }),
+    )
+
+    const repository = createStudioRepository(localStorage)
+
+    expect(repository.listWorkItems('missing')).toEqual([])
+    expect(repository.listVersions('missing')).toEqual([])
+    expect(repository.listDocuments('missing')).toEqual([])
+    expect(repository.listWorkItems(product.id)).toEqual([workItem('valid', product.id)])
+  })
+
+  it('returns the last-known-good snapshot when storage reads fail', () => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listProducts()
+    repository.saveProduct(product)
+    storage.failReads = true
+
+    expect(repository.listProducts()).toContainEqual(product)
+  })
+
+  it('uses a safe seed snapshot when the first storage read fails', () => {
+    const storage = new FaultyStorage()
+    storage.failReads = true
+
+    expect(createStudioRepository(storage).listProducts()).toEqual(seedStudio.products)
+  })
+
+  it('returns a safe snapshot when corrupt-data recovery cannot be written', () => {
+    const storage = new FaultyStorage()
+    storage.data.set(STORAGE_KEY, '{corrupt')
+    storage.failWrites = true
+
+    expect(createStudioRepository(storage).listProducts()).toEqual(seedStudio.products)
+  })
+
+  it('throws a typed error and retains the snapshot when save persistence fails', () => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listProducts()
+    storage.failWrites = true
+
+    expect(() => repository.saveProduct(product)).toThrowError(
+      expect.objectContaining({ name: 'RepositoryError', code: 'PERSISTENCE_FAILED' }),
+    )
+    try {
+      repository.saveProduct(product)
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'PERSISTENCE_FAILED' })
+    }
+    storage.failReads = true
+    expect(repository.listProducts()).not.toContainEqual(product)
+  })
+
+  it('throws a typed error and retains data when reset persistence fails', () => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listProducts()
+    storage.failWrites = true
+
+    expect(() => repository.reset()).toThrowError(
+      expect.objectContaining({ name: 'RepositoryError', code: 'PERSISTENCE_FAILED' }),
+    )
+    storage.failReads = true
+    expect(repository.listProducts()).toEqual(seedStudio.products)
+  })
 })
