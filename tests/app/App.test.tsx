@@ -263,6 +263,38 @@ describe('product workspace', () => {
     expect(name).toHaveValue('Flora External')
   })
 
+  it('clears stale validation errors when loading an external settings version', async () => {
+    const repository = createStudioRepository(localStorage)
+    const user = userEvent.setup()
+    renderApp('/products/flora/settings', repository)
+    await user.clear(screen.getByLabelText('完成度'))
+    await user.click(screen.getByRole('button', { name: '保存设置' }))
+    expect(screen.getByText('请输入完成度')).toBeInTheDocument()
+    const flora = repository.listProducts().find(({ id }) => id === 'flora')!
+
+    repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T10:00:00.000Z' })
+    window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
+    await user.click(await screen.findByRole('button', { name: '加载外部版本' }))
+
+    expect(screen.queryByText('请输入完成度')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('clears stale feedback when clean settings refresh externally', async () => {
+    const repository = createStudioRepository(localStorage)
+    const user = userEvent.setup()
+    renderApp('/products/flora/settings', repository)
+    await user.click(screen.getByRole('button', { name: '保存设置' }))
+    expect(screen.getByRole('status')).toHaveTextContent('设置已保存')
+    const flora = repository.listProducts().find(({ id }) => id === 'flora')!
+
+    repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T11:00:00.000Z' })
+    window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
+
+    expect(await screen.findByLabelText('产品名称')).toHaveValue('Flora External')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
   it('traps focus in the create dialog, closes on Escape, and restores trigger focus', async () => {
     const user = userEvent.setup()
     renderApp()

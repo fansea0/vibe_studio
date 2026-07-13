@@ -4,6 +4,8 @@ import type { Product, ProductVersion, WorkItem } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
 import { ProductOverview } from './ProductOverview'
 import { ProductSettings } from './ProductSettings'
+import { TaskBoard } from './TaskBoard'
+import { VersionList } from './VersionList'
 import { getSafeHttpsUrl } from './productForm'
 
 interface ProductDetailProps {
@@ -11,6 +13,8 @@ interface ProductDetailProps {
   workItems: WorkItem[]
   versions: ProductVersion[]
   onSaveProduct: (product: Product) => void
+  onSaveWorkItem: (item: WorkItem) => void
+  onSaveVersion: (version: ProductVersion) => void
   onArchiveProduct: (product: Product) => void
   onRestoreProduct: (product: Product) => void
 }
@@ -19,7 +23,7 @@ const tabs = [
   { id: 'documents', label: '文档' }, { id: 'settings', label: '设置' },
 ] as const
 
-export function ProductDetail({ products, workItems, versions, onSaveProduct, onArchiveProduct, onRestoreProduct }: ProductDetailProps) {
+export function ProductDetail({ products, workItems, versions, onSaveProduct, onSaveWorkItem, onSaveVersion, onArchiveProduct, onRestoreProduct }: ProductDetailProps) {
   const { productId = '', tab } = useParams()
   const navigate = useNavigate()
   const [restoreError, setRestoreError] = useState('')
@@ -47,8 +51,10 @@ export function ProductDetail({ products, workItems, versions, onSaveProduct, on
       <header className="detail-heading"><div className="detail-title"><span className="hero-icon">{product.icon}</span><div><h1>{product.name}</h1><p>{product.description || '暂未填写产品描述。'}</p></div></div>{appUrl && <a className="external-button" href={appUrl} target="_blank" rel="noopener noreferrer">访问应用 ↗</a>}</header>
       <nav className="tabs" aria-label="产品详情">{tabs.map(({ id, label }) => <Link key={id} aria-current={activeTab === id ? 'page' : undefined} className={activeTab === id ? 'selected' : ''} to={`/products/${product.id}/${id}`}>{label}</Link>)}</nav>
       {activeTab === 'overview' && <ProductOverview product={product} metrics={metrics} />}
+      {activeTab === 'tasks' && <TaskBoard productId={product.id} items={workItems.filter(({ productId: ownerId }) => ownerId === product.id)} onSaveWorkItem={onSaveWorkItem} />}
+      {activeTab === 'versions' && <VersionList productId={product.id} versions={versions.filter(({ productId: ownerId }) => ownerId === product.id)} currentVersion={metrics.currentVersion} onSaveVersion={onSaveVersion} />}
       {activeTab === 'settings' && <ProductSettings product={product} products={products} onSaveProduct={onSaveProduct} onArchiveProduct={onArchiveProduct} onArchived={() => navigate('/products')} />}
-      {(activeTab === 'tasks' || activeTab === 'versions' || activeTab === 'documents') && <section className="overview-card placeholder" aria-labelledby={`${activeTab}-placeholder-title`}><div className="placeholder-icon">◇</div><h2 id={`${activeTab}-placeholder-title`}>{tabs.find(({ id }) => id === activeTab)?.label}</h2><p>此工作区将在后续功能中开放。</p></section>}
+      {activeTab === 'documents' && <section className="overview-card placeholder" aria-labelledby={`${activeTab}-placeholder-title`}><div className="placeholder-icon">◇</div><h2 id={`${activeTab}-placeholder-title`}>{tabs.find(({ id }) => id === activeTab)?.label}</h2><p>此工作区将在后续功能中开放。</p></section>}
     </>
   )
 }

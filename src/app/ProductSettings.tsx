@@ -35,6 +35,8 @@ export function ProductSettings({ product, products, onSaveProduct, onArchivePro
     setValues(productToFormValues(currentProduct))
     setDirty(false)
     setExternalProduct(null)
+    setErrors({})
+    setFeedback(null)
     loadedVersion.current = { id: product.id, updatedAt: product.updatedAt }
   }, [dirty, product.id, product.updatedAt])
 
@@ -49,6 +51,7 @@ export function ProductSettings({ product, products, onSaveProduct, onArchivePro
     setDirty(false)
     loadedVersion.current = { id: externalProduct.id, updatedAt: externalProduct.updatedAt }
     setExternalProduct(null)
+    setErrors({})
     setFeedback(null)
   }
 

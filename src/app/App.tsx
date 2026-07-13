@@ -43,6 +43,14 @@ export default function App({ repository: injectedRepository, initialEntries }: 
     repository.saveProduct(product)
     setStudioState(readStudioState(repository))
   }, [repository])
+  const saveWorkItem = useCallback((item: WorkItem) => {
+    repository.saveWorkItem(item)
+    setStudioState(readStudioState(repository))
+  }, [repository])
+  const saveVersion = useCallback((version: ProductVersion) => {
+    repository.saveVersion(version)
+    setStudioState(readStudioState(repository))
+  }, [repository])
   const archiveProduct = useCallback((product: Product) => {
     const now = new Date().toISOString()
     saveProduct({ ...product, archivedAt: now, updatedAt: now })
@@ -71,7 +79,7 @@ export default function App({ repository: injectedRepository, initialEntries }: 
       <Routes>
         <Route path="/" element={<Navigate to="/products" replace />} />
         <Route path="/products" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductGrid {...snapshot} onSaveProduct={saveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
-        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductDetail {...snapshot} onSaveProduct={saveProduct} onArchiveProduct={archiveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
+        <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} migrationError={migrationError}><ProductDetail {...snapshot} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onArchiveProduct={archiveProduct} onRestoreProduct={restoreProduct} /></Workspace>} />
         <Route path="*" element={<Navigate to="/products" replace />} />
       </Routes>
     </Router>
