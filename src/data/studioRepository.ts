@@ -88,13 +88,19 @@ const isWorkItem = (value: unknown): value is WorkItem =>
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)
 
+const hasValidVersionReleaseState = (value: Record<string, unknown>): boolean =>
+  (value.status === 'planned' && value.releasedAt === null) ||
+  (value.status === 'released' && isIsoDate(value.releasedAt))
+
 const isVersion = (value: unknown): value is ProductVersion =>
   isRecord(value) &&
   isString(value.id) &&
   isString(value.productId) &&
   isString(value.number) &&
+  value.number.length > 0 &&
+  value.number === value.number.trim() &&
   isOneOf(value.status, ['planned', 'released']) &&
-  isNullableIsoDate(value.releasedAt) &&
+  hasValidVersionReleaseState(value) &&
   isString(value.notes) &&
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)
@@ -152,6 +158,7 @@ export type RepositoryErrorCode =
   | 'PERSISTENCE_FAILED'
   | 'VALIDATION_FAILED'
   | 'PRODUCT_NOT_FOUND'
+  | 'DUPLICATE_VERSION'
 
 export class RepositoryError extends Error {
   readonly code: RepositoryErrorCode
@@ -275,9 +282,20 @@ export const createStudioRepository = (storage: Storage): StudioRepository => {
     },
     listVersions: (productId) => read().versions.filter((version) => version.productId === productId),
     saveVersion: (version) => {
-      const validVersion = requireValid(version, isVersion)
+      const validVersion = requireValid({ ...version, number: version.number.trim() }, isVersion)
       const data = read(false)
       requireProduct(data, validVersion.productId)
+      const duplicate = data.versions.some((storedVersion) =>
+        storedVersion.productId === validVersion.productId &&
+        storedVersion.id !== validVersion.id &&
+        storedVersion.number === validVersion.number,
+      )
+      if (duplicate) {
+        throw new RepositoryError(
+          'DUPLICATE_VERSION',
+          `Version number "${validVersion.number}" already exists for this product.`,
+        )
+      }
       persistMutation({ ...data, versions: upsertChild(data.versions, validVersion) })
     },
     listDocuments: (productId) => read().documents.filter((document) => document.productId === productId),

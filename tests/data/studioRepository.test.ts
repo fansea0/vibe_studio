@@ -425,4 +425,90 @@ describe('createStudioRepository', () => {
       workItem('valid-after-rejection', product.id),
     )
   })
+
+  it('rejects a duplicate normalized version number from the latest storage snapshot', () => {
+    const firstRepository = createStudioRepository(localStorage)
+    const staleRepository = createStudioRepository(localStorage)
+    firstRepository.listVersions('flora')
+    staleRepository.listVersions('flora')
+    firstRepository.saveVersion({ ...version('external-version', 'flora'), number: '2.0.0' })
+
+    expect(() => staleRepository.saveVersion({
+      ...version('stale-version', 'flora'),
+      number: ' 2.0.0 ',
+    })).toThrowError(expect.objectContaining({
+      name: 'RepositoryError',
+      code: 'DUPLICATE_VERSION',
+      message: expect.stringContaining('2.0.0'),
+    }))
+    expect(firstRepository.listVersions('flora').filter(({ number }) => number === '2.0.0'))
+      .toHaveLength(1)
+  })
+
+  it('allows updating the same version id without treating it as a duplicate', () => {
+    const repository = createStudioRepository(localStorage)
+    repository.saveVersion({ ...version('same-version', 'flora'), number: '2.0.0' })
+
+    expect(() => repository.saveVersion({
+      ...version('same-version', 'flora'),
+      number: ' 2.0.0 ',
+      notes: 'Updated notes',
+    })).not.toThrow()
+    expect(repository.listVersions('flora').filter(({ id }) => id === 'same-version')).toEqual([
+      expect.objectContaining({ number: '2.0.0', notes: 'Updated notes' }),
+    ])
+  })
+
+  it.each([
+    ['planned with a release date', { status: 'planned', releasedAt: '2026-07-13T00:00:00.000Z' }],
+    ['released without a release date', { status: 'released', releasedAt: null }],
+    ['released with an invalid date', { status: 'released', releasedAt: '2026-02-30T00:00:00.000Z' }],
+  ] as const)('rejects saveVersion when %s', (_case, patch) => {
+    const storage = new FaultyStorage()
+    const repository = createStudioRepository(storage)
+    repository.listVersions('flora')
+    const writesBeforeMutation = storage.writeAttempts
+
+    expect(() => repository.saveVersion({
+      ...version('invalid-release-state', 'flora'),
+      ...patch,
+    })).toThrowError(expect.objectContaining({
+      name: 'RepositoryError',
+      code: 'VALIDATION_FAILED',
+    }))
+    expect(storage.writeAttempts).toBe(writesBeforeMutation)
+    expect(repository.listVersions('flora')).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'invalid-release-state' }),
+    ]))
+  })
+
+  it('drops externally stored versions with contradictory release state without harming valid versions', () => {
+    const validPlanned = { ...version('valid-planned', product.id), number: '1.0.0' }
+    const validReleased = {
+      ...version('valid-released', product.id),
+      number: '1.1.0',
+      status: 'released' as const,
+      releasedAt: '2026-07-13T00:00:00.000Z',
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      products: [product],
+      workItems: [],
+      versions: [
+        validPlanned,
+        validReleased,
+        { ...version('bad-planned', product.id), number: 'bad-a', releasedAt: '2026-07-13T00:00:00.000Z' },
+        { ...version('bad-released', product.id), number: 'bad-b', status: 'released', releasedAt: null },
+        { ...version('bad-date', product.id), number: 'bad-c', status: 'released', releasedAt: '2026-02-30T00:00:00.000Z' },
+      ],
+      documents: [],
+    }))
+
+    const repository = createStudioRepository(localStorage)
+
+    expect(repository.listVersions(product.id)).toEqual([validPlanned, validReleased])
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '').versions).toEqual([
+      validPlanned,
+      validReleased,
+    ])
+  })
 })

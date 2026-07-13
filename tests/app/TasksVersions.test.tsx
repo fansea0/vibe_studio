@@ -209,6 +209,30 @@ describe('manual versions', () => {
     expect(screen.queryByText('failure')).not.toBeInTheDocument()
   })
 
+  it('reports a stale-dialog duplicate rejected by the repository without adding it twice', async () => {
+    const repository = createStudioRepository(localStorage)
+    const externalRepository = createStudioRepository(localStorage)
+    renderApp('/products/flora/versions', repository)
+    const dialog = await openCreateVersion()
+    externalRepository.saveVersion({
+      id: 'external-stale-version',
+      productId: 'flora',
+      number: 'stale-release',
+      status: 'planned',
+      releasedAt: null,
+      notes: '',
+      createdAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+    })
+
+    await userEvent.type(within(dialog).getByLabelText('版本号'), ' stale-release ')
+    await userEvent.click(within(dialog).getByRole('button', { name: '创建版本' }))
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('保存失败，请稍后重试')
+    expect(externalRepository.listVersions('flora').filter(({ number }) => number === 'stale-release'))
+      .toHaveLength(1)
+  })
+
   it('keeps versions isolated to their owning product', async () => {
     const repository = createStudioRepository(localStorage)
     const resumeBefore = repository.listVersions('resume-genius')
