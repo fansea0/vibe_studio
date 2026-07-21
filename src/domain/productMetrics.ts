@@ -14,16 +14,7 @@ export const deriveProductMetrics = (
   versions: readonly ProductVersion[],
 ): ProductMetrics => {
   const productItems = items.filter((item) => item.productId === product.id)
-  const releasedVersions = versions
-    .filter((version) => version.productId === product.id && version.status === 'released')
-    .toSorted((left, right) => {
-      const leftRelease = left.releasedAt ?? left.updatedAt
-      const rightRelease = right.releasedAt ?? right.updatedAt
-      return (
-        Date.parse(rightRelease) - Date.parse(leftRelease) ||
-        Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
-      )
-    })
+  const productVersions = versions.filter((version) => version.productId === product.id)
 
   return {
     completionPercent: product.completionPercent,
@@ -32,7 +23,7 @@ export const deriveProductMetrics = (
       (item) => item.type === 'requirement' && item.status !== 'done',
     ).length,
     openBugCount: productItems.filter((item) => item.type === 'bug' && item.status !== 'done').length,
-    currentVersion: releasedVersions[0]?.number ?? '—',
+    currentVersion: deriveCurrentVersion(productVersions),
   }
 }
 
