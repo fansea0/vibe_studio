@@ -18,7 +18,7 @@ export interface Product {
   repositoryPath: string
   isDeleted?: boolean
   archivedAt: string | null
-  isPublic: boolean
+  isPublic?: boolean
   createdAt: string
   updatedAt: string
 }

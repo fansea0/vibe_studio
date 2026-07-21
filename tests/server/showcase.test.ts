@@ -26,7 +26,7 @@ describe('showcase SQL filter', () => {
 
   it('listPublicProducts returns only isPublic=1 non-archived products', () => {
     const all = repo.listProducts(true)
-    const first = repo.updateProduct(String(all[0].id), { isPublic: true } as any)
+    const first = repo.updateProduct(String(all[0].id), { isPublic: true })
     expect(first.isPublic).toBe(true)
     const listed = repo.listPublicProducts()
     expect(listed).toHaveLength(1)
@@ -35,9 +35,22 @@ describe('showcase SQL filter', () => {
 
   it('getPublicProduct returns null for archived products even when isPublic=1', () => {
     const all = repo.listProducts(true)
-    const first = repo.updateProduct(String(all[0].id), { isPublic: true } as any)
+    const first = repo.updateProduct(String(all[0].id), { isPublic: true })
     repo.archiveProduct(String(first.id))
     expect(repo.getPublicProduct(String(first.id))).toBeUndefined()
+  })
+
+  it('listPublicProducts returns one row per product even when multiple versions share released_at', () => {
+    const all = repo.listProducts(true)
+    const product = all[0]
+    repo.updateProduct(String(product.id), { isPublic: true })
+    // Create three released versions all with the same releasedAt
+    const sameDate = '2026-01-01T00:00:00.000Z'
+    repo.createVersion(String(product.id), { number: 'v1.0', status: 'released', releasedAt: sameDate, notes: '' })
+    repo.createVersion(String(product.id), { number: 'v1.1', status: 'released', releasedAt: sameDate, notes: '' })
+    repo.createVersion(String(product.id), { number: 'v1.2', status: 'released', releasedAt: sameDate, notes: '' })
+    const listed = repo.listPublicProducts()
+    expect(listed).toHaveLength(1) // NOT 3
   })
 
   it('getPublicProduct returns null for non-public products', () => {
@@ -51,7 +64,7 @@ describe('showcase API', () => {
     const repo = createSqliteRepository(':memory:')
     const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
     const all = repo.listProducts(true)
-    repo.updateProduct(String(all[0].id), { isPublic: true } as any)
+    repo.updateProduct(String(all[0].id), { isPublic: true })
     const res = await invoke(handler, 'GET', '/api/showcase/products')
     expect(res.status).toBe(200)
     expect(res.body.data).toHaveLength(1)
