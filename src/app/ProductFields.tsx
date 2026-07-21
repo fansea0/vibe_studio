@@ -47,6 +47,19 @@ export function ProductFields({ values, errors, onChange }: ProductFieldsProps) 
       {field('userCountSource', '用户数来源', <input name="userCountSource" value={values.userCountSource} onChange={change} />)}
       {field('appUrl', '应用地址', <input name="appUrl" type="url" placeholder="https://" value={values.appUrl} onChange={change} />)}
       <div className="span-2">{field('repositoryPath', 'Git 仓库绝对路径', <input name="repositoryPath" placeholder="/Users/me/project" value={values.repositoryPath} onChange={change} />)}</div>
+      <div className="span-2 field">
+        <label htmlFor="product-isPublic">
+          <input
+            id="product-isPublic"
+            type="checkbox"
+            name="isPublic"
+            checked={values.isPublic}
+            onChange={(event) => onChange({ ...values, isPublic: event.target.checked })}
+            style={{ marginRight: 8, width: 'auto' }}
+          />
+          对外公开（显示在作品集页面）
+        </label>
+      </div>
     </div>
   )
 }

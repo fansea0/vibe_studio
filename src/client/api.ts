@@ -1,4 +1,4 @@
-import type { CommitSummary, MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
+import type { CommitSummary, MarkdownDocument, Product, ProductVersion, PublicProduct, ShowcaseProfile, WorkItem } from '../domain/models'
 
 export interface StudioSnapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[]; documents: MarkdownDocument[] }
 export interface ApiError extends Error { code?: string; status?: number }
@@ -47,3 +47,6 @@ export const createDocument = (document: MarkdownDocument, expectedUpdatedAt: st
 export const updateDocument = (document: MarkdownDocument, expectedUpdatedAt: string) => request<MarkdownDocument>(`/api/documents/${document.id}`, json('PATCH', { ...document, expectedUpdatedAt }))
 export interface CommitLogResponse { items: CommitSummary[]; checkedAt: string }
 export const fetchCommits = (productId: string, signal?: AbortSignal, limit = 5) => request<CommitLogResponse>(`/api/products/${encodeURIComponent(productId)}/commits?limit=${limit}`, { signal })
+export const fetchShowcaseProfile = (signal?: AbortSignal) => request<ShowcaseProfile>('/api/showcase/profile', { signal })
+export const fetchShowcaseProducts = (signal?: AbortSignal) => request<PublicProduct[]>('/api/showcase/products', { signal })
+export const fetchShowcaseProduct = (id: string, signal?: AbortSignal) => request<PublicProduct>(`/api/showcase/products/${encodeURIComponent(id)}`, { signal })

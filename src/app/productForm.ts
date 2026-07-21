@@ -11,6 +11,7 @@ export interface ProductFormValues {
   userCountSource: string
   appUrl: string
   repositoryPath: string
+  isPublic: boolean
 }
 
 export type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>>
@@ -36,6 +37,7 @@ export const productToFormValues = (product?: Product): ProductFormValues => ({
   userCountSource: product?.userCountSource ?? '',
   appUrl: product?.appUrl ?? '',
   repositoryPath: product?.repositoryPath ?? '',
+  isPublic: product?.isPublic ?? false,
 })
 
 export const validateProductValues = (
@@ -91,6 +93,7 @@ export const mergeProductValues = (
   userCountSource: values.userCountSource.trim(),
   appUrl: values.appUrl.trim() || null,
   repositoryPath: values.repositoryPath.trim(),
+  isPublic: values.isPublic,
   updatedAt: timestamp,
 })
 
