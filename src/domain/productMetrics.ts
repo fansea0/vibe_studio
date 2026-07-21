@@ -35,3 +35,17 @@ export const deriveProductMetrics = (
     currentVersion: releasedVersions[0]?.number ?? '—',
   }
 }
+
+export const deriveCurrentVersion = (versions: readonly ProductVersion[]): string => {
+  const releasedVersions = versions
+    .filter((version) => version.status === 'released')
+    .toSorted((left, right) => {
+      const leftRelease = left.releasedAt ?? left.updatedAt
+      const rightRelease = right.releasedAt ?? right.updatedAt
+      return (
+        Date.parse(rightRelease) - Date.parse(leftRelease) ||
+        Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+      )
+    })
+  return releasedVersions[0]?.number ?? '—'
+}

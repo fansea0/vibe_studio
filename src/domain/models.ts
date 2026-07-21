@@ -18,8 +18,40 @@ export interface Product {
   repositoryPath: string
   isDeleted?: boolean
   archivedAt: string | null
+  isPublic: boolean
   createdAt: string
   updatedAt: string
+}
+
+export interface PublicProduct {
+  id: string
+  name: string
+  description: string
+  icon: string
+  status: ProductStatus
+  currentVersion: string
+  userCount: number
+  appUrl: string | null
+  updatedAt: string
+}
+
+export type SocialPlatform = 'github' | 'twitter' | 'website' | 'linkedin' | 'wechat'
+
+export interface SocialLink {
+  platform: SocialPlatform
+  label: string
+  url: string
+}
+
+export interface ShowcaseProfile {
+  displayName: string
+  tagline: string
+  avatarUrl: string | null
+  statusLine: string
+  statusPillText: string
+  aboutParagraphs: string[]
+  contactEmail: string
+  socialLinks: SocialLink[]
 }
 
 export interface CommitSummary { sha: string; shortSha: string; author: string; committedAt: string; subject: string }
