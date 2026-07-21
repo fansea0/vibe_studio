@@ -1,5 +1,7 @@
 import type { Product, ProductVersion, WorkItem } from './models'
 
+export const NO_RELEASED_VERSION = '—'
+
 export interface ProductMetrics {
   completionPercent: number
   userCount: number
@@ -38,5 +40,5 @@ export const deriveCurrentVersion = (versions: readonly ProductVersion[]): strin
         Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
       )
     })
-  return releasedVersions[0]?.number ?? '—'
+  return releasedVersions[0]?.number ?? NO_RELEASED_VERSION
 }
