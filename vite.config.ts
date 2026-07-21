@@ -5,7 +5,7 @@ import { createViteApiPlugin } from './src/server/viteApiPlugin.js'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), createViteApiPlugin()],
-  server: { port: 6000, strictPort: true },
+  server: { port: 5173, strictPort: true },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
