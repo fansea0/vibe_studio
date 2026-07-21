@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { ShowcaseApp } from './showcase/ShowcaseApp'
 import { createIndexedDbMutationLock, createStudioRepository, createUnavailableMutationLock, STUDIO_STORAGE_KEY, type DocumentMutationToken, type MutationLock, type ProductMutationToken, type StudioRepository } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
@@ -21,10 +21,13 @@ export default function App(props: AppProps) {
 }
 
 function TopLevel(props: AppProps) {
-  const initialPath = props.initialEntries?.[0] ?? (typeof window !== 'undefined' ? window.location.pathname : '/')
-  if (initialPath.startsWith('/showcase')) {
-    return <ShowcaseApp initialEntries={props.initialEntries} />
-  }
+  const Router = props.initialEntries ? MemoryRouter : BrowserRouter
+  return <Router {...(props.initialEntries ? { initialEntries: props.initialEntries } : {})}><AppRoutes {...props} /></Router>
+}
+
+function AppRoutes(props: AppProps) {
+  const location = useLocation()
+  if (location.pathname.startsWith('/showcase')) return <ShowcaseApp />
   return <ApiApp {...props} />
 }
 
