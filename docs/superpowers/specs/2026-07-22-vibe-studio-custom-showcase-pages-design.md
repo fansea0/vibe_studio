@@ -35,9 +35,16 @@
 ```ts
 export interface Product {
   // ... 现有所有字段
-  showcasePagePath?: string  // 新增，可选；空字符串表示使用默认详情页
+  showcasePagePath?: string  // 新增，可选；空字符串或 undefined 都表示使用默认详情页
 }
 ```
+
+**字段语义约定**：
+- DB 层：列默认 `''`，存储为空字符串或合法相对路径
+- TS 域层：`Product` 用 `?:` 可选，`undefined` 由 `mapProduct` 在 `r.showcase_page_path` 为空时返回 `''`（**实现细节**：map 时用 `r.showcase_page_path || ''`）
+- 表单层：`ProductFormValues.showcasePagePath: string`（必填），`undefined` 在 `mergeProductValues` 时归一化为 `''`
+- 公开 API 层：`PublicProduct.showcasePagePath: string`（必填），永远不会是 `undefined`
+- UI 层：详情页检查 `product.showcasePagePath` 真值（`!== ''`）决定是否渲染 iframe
 
 ### 3.2 PublicProduct 新增字段
 
