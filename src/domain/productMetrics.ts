@@ -1,4 +1,4 @@
-import type { Product, ProductVersion, WorkItem } from './models'
+import type { Product, ProductVersion, WorkItem } from './models.js'
 
 export const NO_RELEASED_VERSION = '—'
 
