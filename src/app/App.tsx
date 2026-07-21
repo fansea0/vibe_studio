@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { ShowcaseApp } from './showcase/ShowcaseApp'
 import { createIndexedDbMutationLock, createStudioRepository, createUnavailableMutationLock, STUDIO_STORAGE_KEY, type DocumentMutationToken, type MutationLock, type ProductMutationToken, type StudioRepository } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import * as api from '../client/api'
@@ -16,7 +17,15 @@ export default function App(props: AppProps) {
   // The injectable repository remains solely as a test seam. Production always uses the SQLite HTTP API.
   // Vitest renders a few legacy compatibility scenarios without injecting a repository; keep those
   // deterministic while never enabling this fallback in a production build.
-  return props.repository || import.meta.env.MODE === 'test' ? <LegacyApp {...props} /> : <ApiApp {...props} />
+  return props.repository || import.meta.env.MODE === 'test' ? <LegacyApp {...props} /> : <TopLevel {...props} />
+}
+
+function TopLevel(props: AppProps) {
+  const initialPath = props.initialEntries?.[0] ?? (typeof window !== 'undefined' ? window.location.pathname : '/')
+  if (initialPath.startsWith('/showcase')) {
+    return <ShowcaseApp initialEntries={props.initialEntries} />
+  }
+  return <ApiApp {...props} />
 }
 
 function ApiApp({ initialEntries }: AppProps) {
