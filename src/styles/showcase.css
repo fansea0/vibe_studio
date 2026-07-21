@@ -79,3 +79,14 @@
   .showcase-skeleton-line, .showcase-skeleton-card { animation: none; }
   .showcase-card:hover { transform: none; }
 }
+
+.showcase-card:focus-visible,
+.showcase-contact-email:focus-visible,
+.showcase-social-list a:focus-visible,
+.showcase-cta:focus-visible,
+.showcase-nav-links a:focus-visible,
+.showcase-breadcrumb a:focus-visible {
+  outline: 3px solid #6259e8;
+  outline-offset: 3px;
+  border-radius: 12px;
+}
