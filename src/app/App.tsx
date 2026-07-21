@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
-import { ShowcaseApp } from './showcase/ShowcaseApp'
+import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { AboutSection } from './showcase/AboutSection'
+import { ContactSection } from './showcase/ContactSection'
+import { HeroSection } from './showcase/HeroSection'
+import { NowSection } from './showcase/NowSection'
+import { ShowcaseDetailPage } from './showcase/ShowcaseDetailPage'
+import { ShowcaseShell } from './showcase/ShowcaseShell'
+import { WorksSection } from './showcase/WorksSection'
 import { createIndexedDbMutationLock, createStudioRepository, createUnavailableMutationLock, STUDIO_STORAGE_KEY, type DocumentMutationToken, type MutationLock, type ProductMutationToken, type StudioRepository } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
 import * as api from '../client/api'
@@ -25,13 +31,22 @@ function TopLevel(props: AppProps) {
   return <Router {...(props.initialEntries ? { initialEntries: props.initialEntries } : {})}><AppRoutes {...props} /></Router>
 }
 
-function AppRoutes(props: AppProps) {
-  const location = useLocation()
-  if (location.pathname.startsWith('/showcase')) return <ShowcaseApp />
-  return <ApiApp {...props} />
+function AppRoutes(_props: AppProps) {
+  const showcase = useShowcaseProfile()
+  const studio = useStudio()
+  return <Routes>
+    <Route path="/showcase" element={<ShowcaseShell><ShowcaseHome profile={showcase.profile} error={showcase.error} /></ShowcaseShell>} />
+    <Route path="/showcase/:productId" element={<ShowcaseShell><ShowcaseDetailRoute productId={undefined} /></ShowcaseShell>} />
+    <Route path="/showcase/*" element={<ShowcaseShell><ShowcaseNotFound /></ShowcaseShell>} />
+    <Route path="/" element={<Navigate to="/products" replace />} />
+    <Route path="/products" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductGrid {...studio.snapshot} {...studio.handlers} /></Workspace>} />
+    <Route path="/products/:productId/:tab?" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductDetail {...studio.snapshot} {...studio.handlers} /></Workspace>} />
+    <Route path="*" element={<Navigate to="/products" replace />} />
+  </Routes>
 }
 
-function ApiApp({ initialEntries }: AppProps) {
+interface StudioState { snapshot: Snapshot; error: string; handlers: { onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void> } }
+function useStudio(): StudioState {
   const [snapshot, setSnapshot] = useState<Snapshot>(empty)
   const [error, setError] = useState('')
   const refresh = useCallback(async () => { try { setSnapshot(await api.fetchSnapshot()); setError('') } catch { setError('无法连接到 SQLite 服务，请稍后重试。') } }, [])
@@ -43,7 +58,44 @@ function ApiApp({ initialEntries }: AppProps) {
   const saveDocument = useCallback(async (document: MarkdownDocument, token: DocumentMutationToken) => { await mutate(() => snapshot.documents.some((x) => x.id === document.id) ? api.updateDocument(document, token.expectedUpdatedAt ?? document.updatedAt) : api.createDocument(document, token.expectedUpdatedAt)) }, [mutate, snapshot.documents])
   const archive = useCallback(async (product: Product) => { await mutate(() => api.archiveProduct(product.id, product.updatedAt)) }, [mutate])
   const restore = useCallback(async (product: Product) => { await mutate(() => api.restoreProduct(product.id, product.updatedAt)) }, [mutate])
-  return <StudioRoutes snapshot={snapshot} error={error} initialEntries={initialEntries} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archive} onRestoreProduct={restore} />
+  return { snapshot, error, handlers: { onSaveProduct: saveProduct, onSaveWorkItem: saveWorkItem, onSaveVersion: saveVersion, onSaveDocument: saveDocument, onArchiveProduct: archive, onRestoreProduct: restore } }
+}
+
+interface ProfileState { profile: import('../domain/models').ShowcaseProfile; error: string }
+function useShowcaseProfile(): ProfileState {
+  const [profile, setProfile] = useState<import('../domain/models').ShowcaseProfile>({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] })
+  const [error, setError] = useState('')
+  useEffect(() => { const c = new AbortController(); fetch('/api/showcase/profile', { signal: c.signal }).then(async (r) => { const body = await r.json(); if (r.ok) setProfile(body.data); else setError('展示页配置缺失，请稍后重试') }).catch(() => setError('展示页配置缺失，请稍后重试')); return () => c.abort() }, [])
+  return { profile, error }
+}
+
+function ShowcaseHome({ profile, error }: { profile: import('../domain/models').ShowcaseProfile; error: string }) {
+  return (
+    <>
+      <HeroSection profile={profile} error={error} />
+      <NowSection statusLine={profile.statusLine} error={error} />
+      <WorksSection />
+      <AboutSection paragraphs={profile.aboutParagraphs} error={error} />
+      <ContactSection email={profile.contactEmail} links={profile.socialLinks} error={error} />
+    </>
+  )
+}
+
+function ShowcaseDetailRoute({ productId }: { productId: string | undefined }) {
+  const params = useParams()
+  const id = productId ?? params.productId
+  if (!id) return <ShowcaseNotFound />
+  return <ShowcaseDetailPage productId={id} />
+}
+
+function ShowcaseNotFound() {
+  return (
+    <section className="showcase-section">
+      <h2>作品未公开或不存在</h2>
+      <p>这个作品可能还没有对外公开，或者链接已失效。</p>
+      <a href="/showcase">返回作品集</a>
+    </section>
+  )
 }
 
 function LegacyApp({ repository: injected, initialEntries }: AppProps) {
@@ -64,17 +116,17 @@ function LegacyApp({ repository: injected, initialEntries }: AppProps) {
   const restore = async (p: Product) => { const now = new Date().toISOString(); await saveProduct({ ...normalizeProductLifecycle({ ...p, archivedAt: null, updatedAt: now }, true), updatedAt: now }, { expectedUpdatedAt: p.updatedAt }) }
   useEffect(() => { const handler = (e: StorageEvent) => { if (e.key === null || e.key === STUDIO_STORAGE_KEY) refresh() }; window.addEventListener('storage', handler); return () => window.removeEventListener('storage', handler) }, [repository])
   useEffect(() => { if (!migrations.length) return; void (async () => { try { for (const id of migrations) await repository.migrateLegacyProductLifecycle(id); refresh() } catch { setMigrationError('旧版产品数据迁移失败，当前已使用安全视图。') } })() }, [])
-  return <StudioRoutes snapshot={snapshot} error={migrationError} initialEntries={initialEntries} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archive} onRestoreProduct={restore} />
+  const Router = initialEntries ? MemoryRouter : BrowserRouter
+  return <Router {...(initialEntries ? { initialEntries } : {})}><StudioRoutes snapshot={snapshot} error={migrationError} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archive} onRestoreProduct={restore} /></Router>
 }
 
-interface RouteProps { snapshot: Snapshot; error: string; initialEntries?: string[]; onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void> }
-function StudioRoutes({ snapshot, error, initialEntries, ...handlers }: RouteProps) {
-  const Router = initialEntries ? MemoryRouter : BrowserRouter
-  return <Router {...(initialEntries ? { initialEntries } : {})}><Routes>
+interface RouteProps { snapshot: Snapshot; error: string; onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void> }
+function StudioRoutes({ snapshot, error, ...handlers }: RouteProps) {
+  return <Routes>
     <Route path="/" element={<Navigate to="/products" replace />} />
     <Route path="/products" element={<Workspace products={snapshot.products} error={error}><ProductGrid {...snapshot} {...handlers} /></Workspace>} />
     <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} error={error}><ProductDetail {...snapshot} {...handlers} /></Workspace>} />
     <Route path="*" element={<Navigate to="/products" replace />} />
-  </Routes></Router>
+  </Routes>
 }
 function Workspace({ products, error, children }: { products: Product[]; error: string; children: React.ReactNode }) { const { productId } = useParams(); return <AppShell products={products} currentProductId={productId}>{error && <p role="alert" className="feedback error boundary-feedback">{error}</p>}{children}</AppShell> }
