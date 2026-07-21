@@ -1,0 +1,13 @@
+{
+  "displayName": "你的名字",
+  "tagline": "独立开发者，做有意思的产品。",
+  "avatarUrl": null,
+  "statusLine": "正在做一个有意思的小工具。",
+  "statusPillText": "欢迎合作",
+  "aboutParagraphs": [
+    "在这里写一段关于你自己的介绍。",
+    "可以聊聊你关注的技术领域。"
+  ],
+  "contactEmail": "you@example.com",
+  "socialLinks": []
+}
