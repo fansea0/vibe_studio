@@ -118,7 +118,7 @@ try { db.exec('ALTER TABLE products ADD COLUMN is_public INTEGER NOT NULL DEFAUL
 | `GET` | `/api/showcase/products` | SQL：`SELECT ... FROM products WHERE is_public=1 AND is_deleted=0 AND status!=3 ORDER BY updated_at DESC` |
 | `GET` | `/api/showcase/products/:id` | SQL 同上 + `AND id=?`；找不到 → 404 |
 
-**`currentVersion` 计算**：调用现有 `deriveProductMetrics(product, workItems, versions)` 取 `metrics.currentVersion`（在 `src/domain/productMetrics.ts` 中定义）。该函数已经是工作台依赖，因此直接复用，不引入新的指标逻辑。
+**`currentVersion` 计算**：在 `src/domain/productMetrics.ts` 新增一个轻量函数 `deriveCurrentVersion(versions: readonly ProductVersion[]): string`，仅基于 `versions` 取出最近一个 `released` 版本号（找不到时返回 `'—'`）。**不复用 `deriveProductMetrics`**——后者依赖 `workItems`，公开页不应读取内部数据。`deriveCurrentVersion` 与现有 `deriveProductMetrics` 内部的过滤/排序逻辑保持一致（先按 `releasedAt` 倒序，再按 `updatedAt` 倒序）。
 
 **字段映射**（snake ↔ camel，与现有 `mapProduct` 风格一致）：
 - `is_public` ↔ `isPublic`
@@ -502,6 +502,7 @@ npm run build
 - [ ] ProductSettings 加"对外公开"开关
 - [ ] ProductDialog 加"对外公开"开关
 - [ ] sqlite.ts mapProduct 加 isPublic 映射
+- [ ] domain/productMetrics.ts 新增 deriveCurrentVersion（仅依赖 versions）
 
 ### 展示页
 - [ ] ShowcaseApp 路由根
