@@ -35,6 +35,15 @@ npm run build
 
 SQLite API 与前端由 Vite 插件在同一端口提供，开发地址固定为 `http://localhost:6000`。
 
+## 作品集对外展示
+
+`/showcase` 是一个对外公开访问的作品集页面，面向潜在合作者、招聘方和好奇的访客，展示当前对外公开的产品。
+
+- 在工作台的产品设置中勾选 **对外公开** 即可让该产品出现在 `/showcase`。
+- 公开的产品只能展示名称、描述、图标、状态、当前版本、用户数和 `appUrl`，**不会**展示任务、Bug、文档等内部协作数据。
+- 个人信息、tagline、关于我段落、联系方式和社交链接在 `data/showcase-profile.json` 中配置，修改后需要重启 dev server。
+- 详情页 `/showcase/:productId` 仅对公开且未归档的产品可见；不公开或已归档的 ID 返回 404。
+
 ## 部署说明
 
 应用使用 `BrowserRouter`。生产服务器必须把未知深链 fallback 到 `index.html`：Nginx 可配置 `try_files $uri $uri/ /index.html`；Vercel 与 Netlify 请启用 SPA rewrite（将 `/*` 重写到 `/index.html`）。
