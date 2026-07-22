@@ -8,6 +8,18 @@ export function ProductShowcaseFrame({ product }: Props) {
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [reloadKey, setReloadKey] = useState(0)
 
+  useEffect(() => {
+    if (!product.showcasePagePath) return
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type === 'vibe-studio:open-url' && typeof event.data.url === 'string') {
+        try { window.open(event.data.url, '_blank', 'noopener,noreferrer') } catch { /* ignore */ }
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [product.showcasePagePath])
+
   if (!product.showcasePagePath) return null
 
   const src = '/api/showcase/pages/' + encodeURIComponent(product.id)
@@ -23,17 +35,6 @@ export function ProductShowcaseFrame({ product }: Props) {
       )
     } catch { /* sandbox may block in some browsers; ignore */ }
   }
-
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return
-      if (event.data?.type === 'vibe-studio:open-url' && typeof event.data.url === 'string') {
-        try { window.open(event.data.url, '_blank', 'noopener,noreferrer') } catch { /* ignore */ }
-      }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [])
 
   return (
     <>
