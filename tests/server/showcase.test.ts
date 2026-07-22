@@ -147,9 +147,10 @@ describe('showcase pages API with file', () => {
   let productId: string
   let dir: string
   beforeEach(async () => {
-    const repo = createSqliteRepository(':memory:')
-    productId = String(repo.listProducts(true)[0].id)
-    repo.close()
+    const repoForSeed = createSqliteRepository(':memory:')
+    const nonFlora = repoForSeed.listProducts(true).find(p => p.name !== 'Flora')!
+    productId = String(nonFlora.id)
+    repoForSeed.close()
     dir = join(process.cwd(), 'data/products', productId)
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, 'showcase.html'), '<h1>flora</h1>', 'utf8')
@@ -159,10 +160,10 @@ describe('showcase pages API with file', () => {
   it('GET /api/showcase/pages/:id returns HTML when public + path configured', async () => {
     const repo = createSqliteRepository(':memory:')
     const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
-    const id = String(repo.listProducts(true)[0].id)
-    const configured = `data/products/${id}/showcase.html`
-    repo.updateProduct(id, { isPublic: true, showcasePagePath: configured } as any)
-    const res = await invokeRaw(handler, 'GET', `/api/showcase/pages/${id}`)
+    const nonFlora = repo.listProducts(true).find(p => p.name !== 'Flora')!
+    const configured = `data/products/${nonFlora.id}/showcase.html`
+    repo.updateProduct(String(nonFlora.id), { isPublic: true, showcasePagePath: configured } as any)
+    const res = await invokeRaw(handler, 'GET', `/api/showcase/pages/${nonFlora.id}`)
     expect(res.status).toBe(200)
     expect(res.body).toBe('<h1>flora</h1>')
     repo.close()
@@ -171,10 +172,10 @@ describe('showcase pages API with file', () => {
   it('GET /api/showcase/pages/:id returns 405 on POST', async () => {
     const repo = createSqliteRepository(':memory:')
     const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
-    const id = String(repo.listProducts(true)[0].id)
-    const configured = `data/products/${id}/showcase.html`
-    repo.updateProduct(id, { isPublic: true, showcasePagePath: configured } as any)
-    const res = await invoke(handler, 'POST', `/api/showcase/pages/${id}`, {})
+    const nonFlora = repo.listProducts(true).find(p => p.name !== 'Flora')!
+    const configured = `data/products/${nonFlora.id}/showcase.html`
+    repo.updateProduct(String(nonFlora.id), { isPublic: true, showcasePagePath: configured } as any)
+    const res = await invoke(handler, 'POST', `/api/showcase/pages/${nonFlora.id}`, {})
     expect(res.status).toBe(405)
     repo.close()
   })
