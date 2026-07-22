@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApiHandler } from '../../src/server/api.js'
 import { createSqliteRepository } from '../../src/server/sqlite.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { writeFile, mkdir, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const invoke = async (handler: ReturnType<typeof createApiHandler>, method: string, url: string, body?: unknown) => {
   const chunks: Buffer[] = []
@@ -17,6 +19,22 @@ const invoke = async (handler: ReturnType<typeof createApiHandler>, method: stri
   } as unknown as IncomingMessage
   await handler(req, res)
   return { status: res.statusCode, body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null }
+}
+
+const invokeRaw = async (handler: ReturnType<typeof createApiHandler>, method: string, url: string, body?: unknown) => {
+  const chunks: Buffer[] = []
+  const res = {
+    statusCode: 0,
+    setHeader() {},
+    end(chunk: string) { chunks.push(Buffer.from(chunk)) },
+  } as unknown as ServerResponse
+  const req = {
+    method,
+    url,
+    [Symbol.asyncIterator]: async function* () { if (body !== undefined) yield Buffer.from(JSON.stringify(body)) },
+  } as unknown as IncomingMessage
+  await handler(req, res)
+  return { status: res.statusCode, body: chunks.length ? Buffer.concat(chunks).toString('utf8') : '' }
 }
 
 describe('showcase SQL filter', () => {
@@ -95,6 +113,64 @@ describe('showcase API', () => {
     const handler = createApiHandler({ repository: repo, profileReader: async () => { throw new Error('missing') } })
     const res = await invoke(handler, 'GET', '/api/showcase/profile')
     expect(res.status).toBe(503)
+    repo.close()
+  })
+})
+
+describe('showcase pages API', () => {
+  it('GET /api/showcase/pages/:id returns 404 when product is private or archived', async () => {
+    const repo = createSqliteRepository(':memory:')
+    const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
+    const all = repo.listProducts(true)
+    const res = await invoke(handler, 'GET', `/api/showcase/pages/${all[0].id}`)
+    expect(res.status).toBe(404)
+    repo.close()
+  })
+
+  it('GET /api/showcase/pages/:id returns 404 when showcasePagePath is empty', async () => {
+    const repo = createSqliteRepository(':memory:')
+    const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
+    const all = repo.listProducts(true)
+    repo.updateProduct(String(all[0].id), { isPublic: true, showcasePagePath: '' } as any)
+    const res = await invoke(handler, 'GET', `/api/showcase/pages/${all[0].id}`)
+    expect(res.status).toBe(404)
+    repo.close()
+  })
+})
+
+describe('showcase pages API with file', () => {
+  let productId: string
+  let dir: string
+  beforeEach(async () => {
+    const repo = createSqliteRepository(':memory:')
+    productId = String(repo.listProducts(true)[0].id)
+    repo.close()
+    dir = join(process.cwd(), 'data/products', productId)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'showcase.html'), '<h1>flora</h1>', 'utf8')
+  })
+  afterEach(async () => { await rm(join(process.cwd(), 'data/products', productId), { recursive: true, force: true }) })
+
+  it('GET /api/showcase/pages/:id returns HTML when public + path configured', async () => {
+    const repo = createSqliteRepository(':memory:')
+    const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
+    const id = String(repo.listProducts(true)[0].id)
+    const configured = `data/products/${id}/showcase.html`
+    repo.updateProduct(id, { isPublic: true, showcasePagePath: configured } as any)
+    const res = await invokeRaw(handler, 'GET', `/api/showcase/pages/${id}`)
+    expect(res.status).toBe(200)
+    expect(res.body).toBe('<h1>flora</h1>')
+    repo.close()
+  })
+
+  it('GET /api/showcase/pages/:id returns 405 on POST', async () => {
+    const repo = createSqliteRepository(':memory:')
+    const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
+    const id = String(repo.listProducts(true)[0].id)
+    const configured = `data/products/${id}/showcase.html`
+    repo.updateProduct(id, { isPublic: true, showcasePagePath: configured } as any)
+    const res = await invoke(handler, 'POST', `/api/showcase/pages/${id}`, {})
+    expect(res.status).toBe(405)
     repo.close()
   })
 })
