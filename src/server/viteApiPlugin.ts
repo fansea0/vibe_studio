@@ -27,6 +27,19 @@ export function createViteApiPlugin({ databasePath, gitReader }: { databasePath?
     name: 'vibe-studio-api',
     async configureServer(server) {
       const file = databasePath ?? path.resolve(process.cwd(), 'data/vibe-studio.sqlite')
+      // Surface a friendly warning when the DB is brand new (so users know the seed will run)
+      // and a louder warning if the DB file was *just* created on this session start
+      // (which only happens if someone deleted it — a strong signal they may have lost user data).
+      const { statSync } = await import('node:fs')
+      let dbAgeNote = ''
+      try {
+        const stat = statSync(file)
+        const ageMs = Date.now() - stat.mtimeMs
+        if (ageMs < 5_000) {
+          dbAgeNote = ` [warning: file was created ${Math.round(ageMs / 1000)}s ago — if you had prior data it has been lost]`
+        }
+      } catch { /* file may not exist yet; seed will create it */ }
+      if (dbAgeNote) server.config.logger.info(`[vibe-studio] using database ${file}${dbAgeNote}`)
       repo = createSqliteRepository(file)
       const profilePath = path.resolve(process.cwd(), 'data/showcase-profile.json')
       // profileReader is invoked on every request so live edits to showcase-profile.json

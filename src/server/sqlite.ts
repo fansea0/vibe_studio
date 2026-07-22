@@ -181,6 +181,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS documents_product_name_uq ON documents(product
     transaction<T>(fn: () => T) { return db.transaction(fn)() }, tableNames() { return ['products','work_items','versions','documents'] }, foreignKeysEnabled() { return Number(db.pragma('foreign_keys', { simple: true })) === 1 }, close() { db.close() }
   }
   const count = (db.prepare('SELECT count(*) AS c FROM products').get() as any).c
-  if (!count) for (const p of [{ name: 'Flora', productType: 'mobile-app', icon: '🌿', status: 'beta', completionPercent: 78, userCount: 2640, isPublic: true, showcasePagePath: 'data/products/1/showcase.html' }, { name: 'ResumeGenius', productType: 'web-app', icon: '📄', status: 'developing', completionPercent: 62, userCount: 890 }, { name: 'Text War', productType: 'game', icon: '⚔️', status: 'released', completionPercent: 100, userCount: 12400 }]) repository.createProduct({ ...p, description: '', userCountSource: '', appUrl: null, repositoryPath: '' } as ProductInput)
+  if (!count) {
+    console.warn('[vibe-studio] database is empty — seeding 3 demo products. To preserve your data across restarts, never delete data/vibe-studio.sqlite manually.')
+    for (const p of [{ name: 'Flora', productType: 'mobile-app', icon: '🌿', status: 'beta', completionPercent: 78, userCount: 2640, isPublic: true, showcasePagePath: 'data/products/1/showcase.html' }, { name: 'ResumeGenius', productType: 'web-app', icon: '📄', status: 'developing', completionPercent: 62, userCount: 890 }, { name: 'Text War', productType: 'game', icon: '⚔️', status: 'released', completionPercent: 100, userCount: 12400 }]) repository.createProduct({ ...p, description: '', userCountSource: '', appUrl: null, repositoryPath: '' } as ProductInput)
+  }
   return repository
 }
