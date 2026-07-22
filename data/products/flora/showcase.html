@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flora · 自定义作品页示例</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        padding: 32px;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: linear-gradient(135deg, #f0fff4, #e6fffa);
+        color: #1d2130;
+      }
+      h1 { font-size: 32px; margin: 0 0 12px; letter-spacing: -0.02em; }
+      p.meta { color: #747887; font-size: 14px; margin: 0 0 24px; }
+      button {
+        padding: 10px 18px; border: 0; border-radius: 10px;
+        background: #14845a; color: white; font-weight: 700; cursor: pointer;
+        font: inherit;
+      }
+      button:hover { background: #0f6d4b; }
+      .note {
+        margin-top: 24px; padding: 12px 16px; border-radius: 10px;
+        background: rgba(255,255,255,0.6); color: #555969; font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">加载中…</h1>
+    <p class="meta" id="meta">等待父页面推送产品数据…</p>
+    <button id="open" style="display:none">访问应用</button>
+    <div class="note">
+      这是 <code>data/products/flora/showcase.html</code> 的示例内容。
+      你可以在此文件中自由写 HTML / CSS / JavaScript，刷新作品详情页即可看到效果。
+    </div>
+
+    <script>
+      window.addEventListener('message', function (event) {
+        if (event.origin !== window.location.origin) return;
+        if (!event.data || event.data.type !== 'vibe-studio:showcase-data') return;
+        var product = event.data.product;
+        document.getElementById('title').textContent = product.name;
+        document.getElementById('meta').textContent =
+          (product.icon || '') + '  ' +
+          (product.currentVersion || '—') + '  ·  ' +
+          (product.userCount || 0).toLocaleString() + ' 用户';
+        var btn = document.getElementById('open');
+        if (product.appUrl) {
+          btn.style.display = 'inline-block';
+          btn.textContent = '访问 ' + product.name;
+          btn.onclick = function () {
+            parent.postMessage({ type: 'vibe-studio:open-url', url: product.appUrl }, '*');
+          };
+        }
+      });
+    </script>
+  </body>
+</html>
