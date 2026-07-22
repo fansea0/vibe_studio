@@ -12,6 +12,7 @@ export interface ProductFormValues {
   appUrl: string
   repositoryPath: string
   isPublic: boolean
+  showcasePagePath: string
 }
 
 export type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>>
@@ -38,6 +39,7 @@ export const productToFormValues = (product?: Product): ProductFormValues => ({
   appUrl: product?.appUrl ?? '',
   repositoryPath: product?.repositoryPath ?? '',
   isPublic: product?.isPublic ?? false,
+  showcasePagePath: product?.showcasePagePath ?? '',
 })
 
 export const validateProductValues = (
@@ -94,6 +96,7 @@ export const mergeProductValues = (
   appUrl: values.appUrl.trim() || null,
   repositoryPath: values.repositoryPath.trim(),
   isPublic: values.isPublic,
+  showcasePagePath: values.showcasePagePath.trim(),
   updatedAt: timestamp,
 })
 

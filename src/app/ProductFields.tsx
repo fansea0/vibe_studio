@@ -48,6 +48,18 @@ export function ProductFields({ values, errors, onChange }: ProductFieldsProps) 
       {field('appUrl', '应用地址', <input name="appUrl" type="url" placeholder="https://" value={values.appUrl} onChange={change} />)}
       <div className="span-2">{field('repositoryPath', 'Git 仓库绝对路径', <input name="repositoryPath" placeholder="/Users/me/project" value={values.repositoryPath} onChange={change} />)}</div>
       <div className="span-2 field">
+        <label htmlFor="product-showcasePagePath">自定义作品页路径</label>
+        <input
+          id="product-showcasePagePath"
+          type="text"
+          name="showcasePagePath"
+          value={values.showcasePagePath}
+          onChange={change}
+          placeholder="data/products/<product-id>/showcase.html"
+        />
+        <small className="field-hint">留空使用默认详情页；填写后需重启 dev server 让 Vite 读取新文件</small>
+      </div>
+      <div className="span-2 field">
         <label htmlFor="product-isPublic">
           <input
             id="product-isPublic"
