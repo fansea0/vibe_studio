@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>拼豆图生成器 · 任意图片 → MARD 拼豆配方</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #faf8f5;
+    --surface: #ffffff;
+    --ink: #1c1917;
+    --ink-soft: #57534e;
+    --ink-mute: #a8a29e;
+    --accent: #c2410c;
+    --accent-soft: #fed7aa;
+    --accent-light: #fff7ed;
+    --jewel: #facc15;
+    --jewel-soft: #fef9c3;
+    --border: #e7e5e4;
+    --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.04);
+    --shadow-md: 0 4px 16px rgba(28, 25, 23, 0.06);
+    --shadow-lg: 0 16px 48px rgba(28, 25, 23, 0.10);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: var(--ink); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+
+  /* Hero */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding: 56px 0 60px;
+    background:
+      radial-gradient(circle at 90% 10%, var(--accent-light), transparent 50%),
+      radial-gradient(circle at 10% 70%, var(--jewel-soft), transparent 40%),
+      var(--bg);
+  }
+  .hero-inner { display: grid; grid-template-columns: 1.05fr 1fr; gap: 64px; align-items: center; position: relative; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--accent-light);
+    border: 1px solid var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 22px;
+  }
+  .eyebrow::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(194, 65, 12, 0.18);
+  }
+  .hero-title {
+    font-size: clamp(40px, 5.5vw, 60px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin-bottom: 22px;
+  }
+  .hero-title em {
+    font-style: normal;
+    color: var(--accent);
+    background: linear-gradient(180deg, transparent 65%, rgba(194, 65, 12, 0.22) 65%);
+    padding: 0 6px;
+  }
+  .hero-tagline {
+    font-size: 19px;
+    color: var(--ink-soft);
+    margin-bottom: 32px;
+    max-width: 520px;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+    font-size: 14px;
+    color: var(--ink-mute);
+  }
+  .hero-meta strong { color: var(--ink); font-weight: 700; }
+  .hero-cta-group {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .cta-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 26px;
+    background: var(--accent);
+    color: white;
+    border: 0;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: transform .15s, background .15s;
+  }
+  .cta-primary:hover { background: #9a3409; transform: translateY(-1px); }
+  .cta-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 13px 22px;
+    background: white;
+    color: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 700;
+    font-size: 15px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .cta-secondary:hover { border-color: var(--ink); }
+  .cta-primary .arrow, .cta-secondary .arrow { font-size: 17px; }
+
+  /* Hero illustration — pure CSS bead mosaic preview */
+  .hero-art {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-width: 380px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .mosaic {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 2px;
+    width: 100%;
+    height: 100%;
+    border-radius: 24px;
+    background: #292524;
+    padding: 16px;
+    box-shadow: var(--shadow-lg);
+  }
+  .bead {
+    border-radius: 50% 50% 30% 30%;
+    aspect-ratio: 1;
+    box-shadow: inset -2px -3px 4px rgba(0, 0, 0, 0.18), inset 1px 2px 2px rgba(255, 255, 255, 0.25);
+  }
+  /* Bead palette — earthy/jewel */
+  .b1  { background: radial-gradient(circle at 30% 30%, #d6d3d1, #a8a29e 80%); }
+  .b2  { background: radial-gradient(circle at 30% 30%, #e7e5e4, #fafaf9 60%, #d6d3d1 90%); }
+  .b3  { background: radial-gradient(circle at 30% 30%, #fdba74, #f97316 80%); }
+  .b4  { background: radial-gradient(circle at 30% 30%, #fcd34d, #d97706 80%); }
+  .b5  { background: radial-gradient(circle at 30% 30%, #bef264, #65a30d 80%); }
+  .b6  { background: radial-gradient(circle at 30% 30%, #fde047, #ca8a04 80%); }
+  .b7  { background: radial-gradient(circle at 30% 30%, #f9a8d4, #be185d 80%); }
+  .b8  { background: radial-gradient(circle at 30% 30%, #c4b5fd, #6d28d9 80%); }
+  .b9  { background: radial-gradient(circle at 30% 30%, #93c5fd, #1d4ed8 80%); }
+  .b10 { background: radial-gradient(circle at 30% 30%, #fca5a5, #b91c1c 80%); }
+  .b11 { background: radial-gradient(circle at 30% 30%, #d4d4d8, #71717a 80%); }
+  .b12 { background: radial-gradient(circle at 30% 30%, #fef3c7, #fde68a 60%, #ca8a04 95%); }
+
+  /* Section */
+  section { padding: 80px 0; }
+  .section-header { text-align: center; max-width: 720px; margin: 0 auto 56px; }
+  .section-title { font-size: clamp(28px, 3.5vw, 40px); font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
+  .section-subtitle { color: var(--ink-soft); font-size: 18px; }
+
+  /* Feature grid */
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .feature {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 30px 28px;
+    box-shadow: var(--shadow-sm);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .feature:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+  .feature-icon {
+    width: 48px; height: 48px;
+    display: grid; place-items: center;
+    background: var(--accent-light);
+    border-radius: 12px;
+    font-size: 24px;
+    margin-bottom: 18px;
+  }
+  .feature-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.01em; }
+  .feature-desc { color: var(--ink-soft); font-size: 14px; line-height: 1.65; }
+
+  /* Pipeline (the 4 stages) */
+  .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; position: relative; }
+  .step {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: left;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+  }
+  .step-num {
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+  .step-title { font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+  .step-desc { color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+
+  /* Privacy callout */
+  .privacy {
+    background: linear-gradient(135deg, #064e3b, #065f46);
+    color: white;
+    border-radius: 24px;
+    padding: 48px 40px;
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 48px;
+    align-items: center;
+    box-shadow: var(--shadow-lg);
+  }
+  .privacy h2 {
+    font-size: clamp(26px, 3vw, 34px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .privacy h2 .lock { font-size: 26px; margin-right: 8px; }
+  .privacy p { font-size: 15px; line-height: 1.7; opacity: 0.92; margin-bottom: 14px; }
+  .privacy ul { list-style: none; padding: 0; margin: 0; font-size: 14px; opacity: 0.88; }
+  .privacy li { padding: 6px 0; display: flex; gap: 8px; }
+  .privacy li::before { content: '✓'; color: #6ee7b7; font-weight: 700; }
+  .privacy-visual {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    max-width: 220px;
+    margin-left: auto;
+  }
+  .lock-orbit {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px dashed rgba(110, 231, 183, 0.4);
+    animation: spin 20s linear infinite;
+  }
+  .lock-orbit::before, .lock-orbit::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    background: #6ee7b7;
+    border-radius: 50%;
+    box-shadow: 0 0 12px #6ee7b7;
+  }
+  .lock-orbit::before { top: -6px; left: 50%; transform: translateX(-50%); }
+  .lock-orbit::after { bottom: -6px; left: 50%; transform: translateX(-50%); }
+  .lock-center {
+    position: absolute;
+    inset: 25%;
+    background: white;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 56px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Export cards */
+  .exports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .export-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+  }
+  .export-card .file-icon {
+    width: 56px; height: 56px;
+    margin: 0 auto 16px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    font-size: 26px;
+    font-weight: 700;
+    color: white;
+  }
+  .export-card.png .file-icon { background: linear-gradient(135deg, #f97316, #c2410c); }
+  .export-card.annotated .file-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
+  .export-card.csv .file-icon { background: linear-gradient(135deg, #65a30d, #4d7c0f); }
+  .export-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .export-card p { color: var(--ink-soft); font-size: 14px; }
+  .export-card small { display: block; color: var(--ink-mute); font-size: 12px; margin-top: 12px; font-family: monospace; }
+
+  /* Tech stack */
+  .tech-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .tech-pill {
+    padding: 12px 22px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--ink-soft);
+    box-shadow: var(--shadow-sm);
+  }
+  .tech-pill .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+  .tech-react  .dot { background: #06b6d4; }
+  .tech-ts     .dot { background: #3178c6; }
+  .tech-vite   .dot { background: #646cff; }
+  .tech-canvas .dot { background: #f59e0b; }
+  .tech-webgl  .dot { background: #9333ea; }
+  .tech-idb    .dot { background: #0ea5e9; }
+  .tech-vitest .dot { background: #729b1b; }
+  .tech-playwright .dot { background: #2eb773; }
+
+  /* CTA */
+  .cta-banner {
+    text-align: center;
+    background: linear-gradient(135deg, var(--accent), #9a3409);
+    color: white;
+    border-radius: 24px;
+    padding: 56px 32px;
+    box-shadow: var(--shadow-lg);
+  }
+  .cta-banner h2 {
+    font-size: clamp(26px, 3.5vw, 36px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .cta-banner p { font-size: 17px; opacity: 0.94; margin-bottom: 28px; }
+  .cta-banner .cta-primary { background: white; color: var(--accent); }
+  .cta-banner .cta-primary:hover { background: var(--accent-light); }
+
+  .footer-note {
+    text-align: center;
+    color: var(--ink-mute);
+    font-size: 12px;
+    padding: 32px 0;
+  }
+  .footer-note code {
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+  }
+
+  @media (max-width: 900px) {
+    .hero-inner, .privacy { grid-template-columns: 1fr; gap: 32px; }
+    .hero-art { max-width: 280px; }
+    .features, .exports { grid-template-columns: 1fr; }
+    .pipeline { grid-template-columns: repeat(2, 1fr); }
+    section { padding: 56px 0; }
+    .privacy, .cta-banner { padding: 36px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="container">
+    <div class="hero-inner">
+      <div id="hero-text">
+        <span class="eyebrow"><span id="status-pill">公测中</span></span>
+        <h1 class="hero-title" id="title">把任何图片<br/>变成<em>可拼的豆子</em></h1>
+        <p class="hero-tagline" id="tagline">
+          上传一张照片，30 秒内拿到 MARD 色块图、色号标注、配方表。
+          283 种拼豆色板，全在前端跑，<strong>图片不上传，零服务端</strong>。
+        </p>
+        <div class="hero-meta">
+          <span id="meta-version">⏳ 当前版本 —</span>
+          <span id="meta-progress">🧩 完成度 —</span>
+          <span id="meta-path">📁 —</span>
+        </div>
+        <div class="hero-cta-group">
+          <button class="cta-primary" id="cta-app" style="display:none" type="button">
+            <span>打开应用</span><span class="arrow">→</span>
+          </button>
+          <a class="cta-secondary" href="#how">了解如何工作</a>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="mosaic" id="mosaic"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">四步出图，从上传到打印</h2>
+      <p class="section-subtitle">所有处理都在浏览器里实时跑，没有任何后端依赖。</p>
+    </div>
+    <div class="pipeline">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3 class="step-title">上传图片</h3>
+        <p class="step-desc">拖拽或点击选择。JPG / PNG / WebP，本地 Canvas 读入，不发到服务器。</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3 class="step-title">采样 + 量化</h3>
+        <p class="step-desc">box-average 把图片缩到目标网格（50×50 ~ 500×500），按欧氏距离匹配最近的 MARD 色。</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3 class="step-title">抖动（可选）</h3>
+        <p class="step-desc">Floyd-Steinberg 把量化误差扩散到邻近像素，让渐变更自然。仅在想要时启用。</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h3 class="step-title">导出三件套</h3>
+        <p class="step-desc">高清 PNG / 色号标注 PNG / 配方表 CSV，直接打印或发给工坊制作。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">为手工爱好者打造</h2>
+      <p class="section-subtitle">从第一次打开图片，到把豆子一颗颗摆上板，每一步都被照顾到。</p>
+    </div>
+    <div class="features">
+      <article class="feature">
+        <div class="feature-icon">🎨</div>
+        <h3 class="feature-title">283 种 MARD 色</h3>
+        <p class="feature-desc">A01-A99 / B01-B99 / ... 完整覆盖市面常见拼豆板。色板数据缓存在 IndexedDB，离线也能用。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">📐</div>
+        <h3 class="feature-title">网格大小自由调节</h3>
+        <p class="feature-desc">50×50 的速览小图，500×500 的精细巨作。每条边独立缩放，自动保持原图比例。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">🪄</div>
+        <h3 class="feature-title">Floyd-Steinberg 抖动</h3>
+        <p class="feature-desc">关掉它得到干净色块；打开它让明暗过渡更顺滑。一键切换，实时重渲染。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">🏷️</div>
+        <h3 class="feature-title">色号标注</h3>
+        <p class="feature-desc">格子 ≥ 24 像素时自动在每颗豆子上印色号。做实物时不用反复对照色卡，眼睛就能拿。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">🧾</div>
+        <h3 class="feature-title">配方表 CSV</h3>
+        <p class="feature-desc">每种颜色用了几颗、总数多少、单价多少 —— 直接喂给工坊或自己买豆预算。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">📱</div>
+        <h3 class="feature-title">手机也能用</h3>
+        <p class="feature-desc">桌面浏览器最佳，移动端 Canvas 同样工作。一边拍照一边出图。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section style="background: linear-gradient(180deg, var(--bg), white);">
+  <div class="container">
+    <div class="privacy">
+      <div>
+        <h2><span class="lock">🔒</span>你的图片，只属于你</h2>
+        <p>不需要注册。图片不上传到任何服务器。配方表存在浏览器本地。</p>
+        <ul>
+          <li>Canvas 读取像素 → Web Worker 量化 → PNG 编码，全程在浏览器进程内</li>
+          <li>色板数据缓存在 IndexedDB，第二次打开无需联网</li>
+          <li>没有追踪、没有分析、没有 cookie 横幅</li>
+          <li>Playwright E2E 自测，所有处理都符合规格</li>
+        </ul>
+      </div>
+      <div class="privacy-visual" aria-hidden="true">
+        <div class="lock-orbit"></div>
+        <div class="lock-center">🔒</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">导出的三件套</h2>
+      <p class="section-subtitle">打印、标注、预算三件事，一次解决。</p>
+    </div>
+    <div class="exports">
+      <div class="export-card png">
+        <div class="file-icon">PNG</div>
+        <h3>高清色块图</h3>
+        <p>直接打印，贴在拼豆板背面照着摆。</p>
+        <small>文件：pingdou-{size}.png</small>
+      </div>
+      <div class="export-card annotated">
+        <div class="file-icon">🆎</div>
+        <h3>色号标注图</h3>
+        <p>格子 ≥ 24px 时每颗豆子印编号，色卡丢了也能照着摆。</p>
+        <small>文件：pingdou-{size}-labeled.png</small>
+      </div>
+      <div class="export-card csv">
+        <div class="file-icon">CSV</div>
+        <h3>配方表</h3>
+        <p>每色用量 + 总数 + 估算预算，发给工坊或自己淘宝下单。</p>
+        <small>文件：pingdou-{size}-recipe.csv</small>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="background: var(--bg);">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">技术栈</h2>
+      <p class="section-subtitle">成熟的前端工具链，无后端依赖。</p>
+    </div>
+    <div class="tech-grid">
+      <span class="tech-pill tech-react"><span class="dot"></span>React 18</span>
+      <span class="tech-pill tech-ts"><span class="dot"></span>TypeScript</span>
+      <span class="tech-pill tech-vite"><span class="dot"></span>Vite 5</span>
+      <span class="tech-pill tech-canvas"><span class="dot"></span>Canvas 2D</span>
+      <span class="tech-pill tech-webgl"><span class="dot"></span>WebGL2</span>
+      <span class="tech-pill tech-idb"><span class="dot"></span>IndexedDB</span>
+      <span class="tech-pill tech-vitest"><span class="dot"></span>Vitest</span>
+      <span class="tech-pill tech-playwright"><span class="dot"></span>Playwright</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="cta-banner">
+      <h2>把今天看到的图片，明天就拼出来</h2>
+      <p>无需注册，上传即用。WebGL 加速路径已就绪，未来支持更大尺寸。</p>
+      <button class="cta-primary" id="cta-app-bottom" style="display:none" type="button">
+        <span>打开应用</span><span class="arrow">→</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<div class="footer-note">
+  自定义展示页：<code>data/products/4/showcase.html</code> · 通过 <code>postMessage</code> 接收产品数据
+</div>
+
+<script>
+  (function () {
+    'use strict';
+    var product = null;
+
+    // ===== Tiny bead mosaic preview =====
+    var palette = ['b1','b2','b3','b4','b5','b6','b7','b8','b9','b10','b11','b12'];
+    function renderMosaic() {
+      var mosaic = document.getElementById('mosaic');
+      if (!mosaic) return;
+      var html = '';
+      // Deterministic pseudo-pattern: a flower-like shape using a few palette indices
+      var pattern = [
+        1,1,1,3,3,1,1,1,1,1,
+        1,1,3,6,6,6,1,1,1,1,
+        1,3,6,12,4,4,6,3,1,1,
+        1,3,6,4,12,6,6,3,1,1,
+        1,1,6,6,4,6,3,1,1,1,
+        1,1,3,6,6,3,1,1,1,1,
+        1,1,1,3,3,1,1,1,1,1,
+        1,1,7,7,1,1,7,7,1,1,
+        1,7,9,9,7,7,9,9,7,1,
+        1,7,9,9,7,7,9,9,7,1,
+      ];
+      for (var i = 0; i < pattern.length; i++) {
+        var idx = pattern[i] % palette.length;
+        html += '<span class="bead ' + palette[idx] + '"></span>';
+      }
+      mosaic.innerHTML = html;
+    }
+    renderMosaic();
+
+    // ===== PostMessage from parent =====
+    window.addEventListener('message', function (event) {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.type !== 'vibe-studio:showcase-data') return;
+      product = event.data.product;
+      if (!product) return;
+
+      var statusLabels = {
+        developing: '开发中',
+        beta: '公测中',
+        released: '已发布',
+        archived: '已归档',
+      };
+      var pill = document.getElementById('status-pill');
+      if (pill && product.status) {
+        pill.textContent = (statusLabels[product.status] || product.status) + ' · 拼豆图生成器';
+      }
+
+      var titleEl = document.getElementById('title');
+      if (titleEl && product.name) {
+        titleEl.innerHTML = '欢迎使用<br><em>' + escapeHtml(product.name) + '</em>';
+      }
+
+      var verEl = document.getElementById('meta-version');
+      if (verEl && product.currentVersion && product.currentVersion !== '—') {
+        verEl.innerHTML = '⏳ 当前版本 <strong>' + escapeHtml(product.currentVersion) + '</strong>';
+      } else if (verEl) {
+        verEl.innerHTML = '⏳ 当前版本 <strong>v0.1.0-dev</strong>';
+      }
+
+      var progEl = document.getElementById('meta-progress');
+      if (progEl) {
+        // completionPercent isn't in PublicProduct by default, but it's part of the
+        // base Product type. Parent passes it via postMessage? No — check: PublicProduct
+        // is what the parent sends. completionPercent is NOT in PublicProduct.
+        // Show path instead if no progress available.
+        var meta = progEl.parentElement;
+        meta.removeChild(progEl);
+      }
+
+      if (product.repositoryPath) {
+        var short = product.repositoryPath.split('/').pop();
+        document.getElementById('meta-path').innerHTML =
+          '📁 <strong title="' + escapeHtml(product.repositoryPath) + '">' + escapeHtml(short) + '</strong>';
+      } else {
+        var p = document.getElementById('meta-path');
+        if (p && p.parentElement) p.parentElement.removeChild(p);
+      }
+
+      if (product.appUrl) {
+        var ctaTop = document.getElementById('cta-app');
+        var ctaBottom = document.getElementById('cta-app-bottom');
+        if (ctaTop) {
+          ctaTop.style.display = 'inline-flex';
+          ctaTop.onclick = openUrl.bind(null, product.appUrl);
+        }
+        if (ctaBottom) {
+          ctaBottom.style.display = 'inline-flex';
+          ctaBottom.onclick = openUrl.bind(null, product.appUrl);
+        }
+      }
+    });
+
+    function openUrl(url) {
+      try { parent.postMessage({ type: 'vibe-studio:open-url', url: url }, '*'); } catch (err) { /* ignore */ }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  })();
+</script>
+
+</body>
+</html>

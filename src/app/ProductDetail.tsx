@@ -57,7 +57,7 @@ export function ProductDetail({ products, workItems, versions, documents, onSave
   return (
     <>
       <nav className="breadcrumb" aria-label="面包屑"><Link to="/products">产品</Link><span>/</span><span>{product.name}</span></nav>
-      <header className="detail-heading"><div className="detail-title"><span className="hero-icon">{product.icon}</span><div><h1>{product.name}</h1><p>{product.description || '暂未填写产品描述。'}</p></div></div>{appUrl && <a className="external-button" href={appUrl} target="_blank" rel="noopener noreferrer">访问应用 ↗</a>}</header>
+      <header className="detail-heading"><div className="detail-title"><span className="hero-icon">{product.icon}</span><div><h1>{product.name}</h1><p>{product.description || '暂未填写产品描述。'}</p></div></div><div className="detail-actions">{appUrl && <a className="external-button" href={appUrl} target="_blank" rel="noopener noreferrer">访问应用 ↗</a>}{(product.isPublic || product.showcasePagePath) && <Link className="external-button showcase-button" to={`/showcase/${product.id}`} title={product.isPublic ? '在作品集页面查看（已公开）' : '预览自定义作品集页面（产品未公开，外部访客看不到）'}>{product.isPublic ? '查看作品集页 ↗' : '预览自定义页 ↗'}</Link>}</div></header>
       <nav className="tabs" aria-label="产品详情">{tabs.map(({ id, label }) => <Link key={id} aria-current={activeTab === id ? 'page' : undefined} className={activeTab === id ? 'selected' : ''} to={`/products/${product.id}/${id}`}>{label}</Link>)}</nav>
       {activeTab === 'overview' && <ProductOverview product={product} metrics={metrics} />}
       {activeTab === 'tasks' && <TaskBoard productId={product.id} items={workItems.filter(({ productId: ownerId }) => ownerId === product.id)} onSaveWorkItem={onSaveWorkItem} />}
