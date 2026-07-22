@@ -1,0 +1,53 @@
+{
+  "skill_name": "project-showcase-page",
+  "iteration": 1,
+  "evals": [
+    {
+      "eval_id": 1,
+      "eval_name": "pingdou-duplicate-detection",
+      "prompt": "为 pingdou 写个 showcase 页面（路 /Users/Shared/lab_project/pingdou）",
+      "outcome": "duplicate-handled",
+      "with_skill": {
+        "behavior": "Step 3 query found product id=4 (拼豆图生成器) with same name. Skill stops and asks user. Per skill workflow, this is correct behavior.",
+        "pass": true
+      },
+      "issues_found": [],
+      "notes": "Easy test — DB happens to already contain a 拼豆图生成器 (seeded via setup in earlier conversation). Skill's duplicate detection by name works as written."
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "resume_genius-seed-placeholder",
+      "prompt": "为 /Users/Shared/lab_project/resume_genius 写个 showcase 页面",
+      "outcome": "edge-case",
+      "with_skill": {
+        "behavior": "Per Step 3, would query SQLite and find id=2 (ResumeGenius) — but it's a SEED PLACEHOLDER with empty description. The skill's duplicate-detection treats it as a duplicate and stops. The correct behavior is more nuanced: detect empty descriptions and treat them as 'fill me in', not 'duplicate of real product'.",
+        "pass": false
+      },
+      "issues_found": [
+        "Skill does not distinguish seed placeholders (empty description) from real products. Result: user is asked to confirm skip/update when the right action is to just update."
+      ],
+      "notes": "Resume_genius really is the project at /Users/Shared/lab_project/resume_genius. README confirms. Empty-description seed entry should be auto-claimed."
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "no-fabrication-animake",
+      "prompt": "为 /Users/Shared/lab_project/animake 写个 showcase 页面",
+      "outcome": "fabrication-risk",
+      "with_skill": {
+        "behavior": "No README.md and no package.json in this directory. However, animake/CLAUDE.md exists with rich product info. If the skill reads CLAUDE.md, it can infer the metadata. If it only reads README.md, it must stop and ask.",
+        "pass": "ambiguous",
+        "depends_on": "Skill should be amended to ALSO read CLAUDE.md / AGENTS.md / .codebuddy.md etc."
+      },
+      "issues_found": [
+        "Skill Step 1 says 'read README.md and package.json' — but real repo metadata is sometimes in CLAUDE.md/AGENTS.md. Animake case proves the skill would hit a wall that an LLM could otherwise solve by reading more files."
+      ],
+      "notes": "Examples: animake has CLAUDE.md; some repos have AGENTS.md, .cursorrules, copilot-instructions.md. The skill should treat 'any project-level instruction file with project-overview content' as a metadata source."
+    }
+  ],
+  "summary": {
+    "evals_run": 3,
+    "passes": 1,
+    "edge_cases": 2,
+    "key_finding": "Skill assumes README.md + package.json are sufficient metadata sources; needs to handle (a) seed placeholders that look like duplicates and (b) repos where metadata lives in CLAUDE.md/AGENTS.md instead of README.md."
+  }
+}

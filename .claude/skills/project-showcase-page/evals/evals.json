@@ -1,0 +1,26 @@
+{
+  "skill_name": "project-showcase-page",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "pingdou-real-product",
+      "prompt": "为我 pingdou 项目写个作品集页面，路径是 /Users/Shared/lab_project/pingdou",
+      "expected_output": "Create one product in Vibe Studio SQLite via POST /api/products (should NOT delete the SQLite file). Write data/products/<new-id>/showcase.html with real features from pingdou's README (MARD color quantization, Floyd-Steinberg dithering, IndexedDB offline, etc). Wire showcasePagePath + isPublic=true. End with the public showcase URL.",
+      "files": ["/Users/Shared/lab_project/pingdou"]
+    },
+    {
+      "id": 2,
+      "eval_name": "duplicate-name-handling",
+      "prompt": "我已经在 Vibe Studio 里有 pingdou 这个产品了，再帮它做个 showcase 页面吧",
+      "expected_output": "Detect the existing product via API, STOP and ask the user before doing anything destructive. Show what already exists (id, current isPublic, current showcasePagePath). Suggest options: update existing, skip, or use a different name. Do NOT silently overwrite.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "eval_name": "no-fabrication",
+      "prompt": "为 /Users/Shared/lab_project/resume_genius 写个 showcase 页面",
+      "expected_output": "Read the project's README and source. Infer reasonable metadata (name = whatever the package says, description = first paragraph of README). DO NOT invent features, screenshots, ratings, testimonials, or user counts. If README doesn't exist, ask the user for help OR use package.json description only.",
+      "files": ["/Users/Shared/lab_project/resume_genius"]
+    }
+  ]
+}
