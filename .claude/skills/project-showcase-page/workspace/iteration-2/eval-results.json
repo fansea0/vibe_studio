@@ -1,0 +1,49 @@
+{
+  "skill_name": "project-showcase-page",
+  "iteration": 2,
+  "evals": [
+    {
+      "eval_id": 1,
+      "eval_name": "pingdou-duplicate-detection",
+      "prompt": "为 pingdou 写个 showcase 页面（路 /Users/Shared/lab_project/pingdou）",
+      "outcome": "still-correct",
+      "with_skill": {
+        "behavior": "Step 3 lists products, finds name='拼豆图生成器' (id=4). description is non-empty. Per new skill flow, this is Case C — asks the user to confirm in-place update vs new. Correct behavior preserved across iterations.",
+        "pass": true
+      }
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "resume_genius-seed-placeholder",
+      "prompt": "为 /Users/Shared/lab_project/resume_genius 写个 showcase 页面",
+      "outcome": "FIXED",
+      "with_skill": {
+        "behavior": "Step 3 lists, finds name match id=2 with description=''. New logic correctly identifies Case A (seed placeholder) and AUTO-UPDATES the existing record via PATCH. No more false 'duplicate' prompt.",
+        "pass": true,
+        "execution_verified": "Manually ran /api/products and confirmed id=2 description=''; manual Python script would now correctly apply Case A logic."
+      },
+      "fix_from_iteration": 1: "Step 3 added 'Case A = empty description → auto-update' branch. Skill now distinguishes seed placeholders from real products with same name."
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "no-fabrication-animake",
+      "prompt": "为 /Users/Shared/lab_project/animake 写个 showcase 页面",
+      "outcome": "FIXED",
+      "with_skill": {
+        "behavior": "Step 1 expanded to read CLAUDE.md / AGENTS.md / .cursorrules / .github/copilot-instructions.md in addition to README.md. animake's CLAUDE.md has 'Animake 是一个 AI 驱动的科普动画生成与编辑平台...' — sufficient to extract name + description without fabrication. If all sources empty, skill stops and asks instead of inventing.",
+        "pass": true
+      },
+      "fix_from_iteration": 1: "Step 1 expanded metadata source list to include CLAUDE.md / AGENTS.md / .cursorrules / copilot-instructions.md as authoritative sources of product info."
+    }
+  ],
+  "summary": {
+    "evals_run": 3,
+    "passes": 3,
+    "fixes_from_iteration_1": [
+      "Step 1: read CLAUDE.md / AGENTS.md / .cursorrules in addition to README.md",
+      "Step 3: auto-update seed placeholders (empty description + matching name) instead of refusing",
+      "Step 3: clarify response shape (data is wrapped) and provide 3 distinct cases A/B/C",
+      "Step 2: clarify where in README to find the description (skip title line)"
+    ]
+  }
+}

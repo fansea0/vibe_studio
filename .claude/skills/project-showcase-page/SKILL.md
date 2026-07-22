@@ -40,12 +40,19 @@ Do **NOT** trigger for:
 
 ### Step 1 — Locate and read the project
 
-The user provides a path (e.g. `/Users/Shared/lab_project/pingdou`). Verify the path exists. Then read:
-- `README.md` (most important — usually has features, tech stack, motivation)
-- `package.json` (name, version, scripts, dependencies tell you type and stack)
-- Source layout (`src/`, `index.html`, top-level files) for one more confirmation
+The user provides a path (e.g. `/Users/Shared/lab_project/pingdou`). Verify the path exists.
 
-If `README.md` is missing or empty, look at `package.json` description field and the main entry file.
+Read these metadata sources **in order of preference**, stopping as soon as you have enough to build a confident metadata object. Use the first non-empty / non-trivial answer:
+
+1. **`README.md`** — usually has features, tech stack, motivation (most important)
+2. **`CLAUDE.md`** / **`AGENTS.md`** / **`.cursorrules`** / **`.github/copilot-instructions.md`** — many repos keep a structured "project overview" for AI tools here, often more accurate than the README
+3. **`package.json`** — `name` field, `description`, dependencies hint at stack
+4. **`pyproject.toml`** / **`Cargo.toml`** / **`go.mod`** / **`pubspec.yaml`** — name and description fields when there's no package.json
+5. **Top-level source layout** — `index.html`, `src/main.ts`, `app/`, `lib/` — just to confirm what kind of project this is
+
+If `README.md` is missing/empty, **still look at** CLAUDE.md and AGENTS.md — many real projects keep their product description there. If ALL sources are missing or empty, **stop and ask the user** rather than fabricating.
+
+> **Why this matters**: in iteration 1 we hit `animake` which has no `README.md` but a rich `CLAUDE.md`. Reading both means we never get stuck on a "missing metadata" assumption.
 
 ### Step 2 — Infer product metadata
 
@@ -53,8 +60,8 @@ Build a metadata object from real evidence. **No invented features.** Use this t
 
 | Field            | Source                                                              | Example (pingdou)                                       |
 | ---------------- | ------------------------------------------------------------------- | ------------------------------------------------------- |
-| `name`           | `package.json` `name` field; fall back to directory basename        | `拼豆图生成器` (from `name: "pingdou"` + README title)  |
-| `description`    | First paragraph of README (trim to ~1-2 sentences)                  | "将任意图片转为 MARD 拼豆图的高清色块图..."               |
+| `name`           | `package.json` `name` field; if reads ugly, take the README `# H1` line, formatted as a Chinese / English display name | `拼豆图生成器` (from `name: "pingdou"` + README title)  |
+| `description`    | First **descriptive paragraph** of README — skip the `# Title` heading and any blank line immediately after. If README is in Chinese, keep as-is; trim to ~1-2 sentences | "将任意图片转为 MARD 拼豆图的高清色块图..."               |
 | `productType`    | Infer from runtime: web-app / mobile-app / desktop-app / game / cli / library | `web-app` (has `vite`, browser-target)                  |
 | `icon`           | Pick an emoji that visually fits; never invent if obvious           | `🧩` (beads/jigsaw fits "拼豆")                         |
 | `status`         | `beta` if there's a published version but UI is rough; `released` if project ships a stable public version; `developing` otherwise. Default to `developing` if unclear. | `beta`                                  |
@@ -65,19 +72,47 @@ Build a metadata object from real evidence. **No invented features.** Use this t
 | `isPublic`       | `true` (the whole point of this skill)                              | `true`                                                    |
 | `showcasePagePath` | `data/products/<new-id>/showcase.html` (filled in after Step 4)  | set after step 4                                          |
 
-### Step 3 — Create the product via API
+### Step 3 — Match against existing products (the nuanced part)
 
-**Check first:** does a product with this `name` already exist? If yes, **stop and ask** the user — they may want to update or skip.
+Fetch the list of existing products:
+```bash
+curl -fsS http://localhost:5180/api/products
+```
 
-**Then**, with the dev server already running (Vibe Studio's Vite plugin serves on port 5173 — use `--port 5180 --strictPort` if 5173 is taken by pingdou itself):
+**Note the response shape**: `GET /api/products` returns `{data: [{product, workItems, versions, documents}, …]}` (each product wrapped). Either iterate `.product` for each item, OR use `GET /api/products/<id>` per id for a cleaner unwrapped shape.
+
+Compare against the inferred `name` (normalized: lowercase, trimmed). The match falls into one of three cases:
+
+**Case A — Empty description (`description === ''` or missing) AND the product name normalizes to your target name:**
+This is almost certainly a seed placeholder (the Vibe Studio seed loop creates 3 demo products — Flora, ResumeGenius, Text War — with empty descriptions). **Auto-update this product** with the real metadata you're about to fill in. No user prompt needed — the seed entry is a placeholder we own.
+
+This happens often: someone runs Vibe Studio for the first time, and the demo products "ResumeGenius" / "Text War" / "Flora" get pre-seeded even though the user already had real projects with those names. The skill treats those as fillable.
+
+**Case B — Has description AND `repositoryPath` doesn't match the user's input path:**
+This is a different real product. Stop and ask the user how to proceed.
+
+**Case C — Has description AND `repositoryPath` already matches the input path (or is empty):**
+This is likely the same product the user wants. Ask the user whether to **update in place** (preserves existing work items / versions / documents) or **create new with a different name**.
+
+After triage, if you decide to update in place, use `PATCH /api/products/<id>` in Step 3b with the existing `updatedAt` as `expectedUpdatedAt` to avoid 409 conflicts.
+
+### Step 3b — Create or update the product via API
+
+The dev server should already be running on port 5173 (or whatever you've chosen via `--port 5180 --strictPort`):
 
 ```bash
+# New product (Cases B-duplicate or name didn't match anything)
 curl -fsS -X POST http://localhost:5180/api/products \
   -H "content-type: application/json" \
   -d '{ ...all fields from above, with: name, description, productType, icon, status, completionPercent, userCount (0), userCountSource "", appUrl "", repositoryPath, isPublic false, showcasePagePath "" }'
+
+# Update existing product (Cases A and C-update-in-place)
+curl -fsS -X PATCH http://localhost:5180/api/products/<id> \
+  -H "content-type: application/json" \
+  -d '{"expectedUpdatedAt":"<from list response>","name":"...","description":"...","productType":"...","icon":"...","status":"...","completionPercent":...,"repositoryPath":"...","appUrl":"","isPublic":false,"showcasePagePath":""}'
 ```
 
-Capture the returned `id`. Save it.
+Capture the returned `id` (POST) or the existing `id` (PATCH). Save it.
 
 > **Note:** `isPublic` and `showcasePagePath` are initially empty / false so that if something goes wrong later, the incomplete entry doesn't show up in `/showcase`. We PATCH them at the end.
 
@@ -125,12 +160,14 @@ function escapeHtml(s) {
 
 ### Step 5 — Wire it up
 
-PATCH the just-created product:
+PATCH the product (whether just-created or just-updated) to flip public + path:
 ```bash
 curl -fsS -X PATCH http://localhost:5180/api/products/<id> \
   -H "content-type: application/json" \
-  -d '{"expectedUpdatedAt":"<from step 3 response>","isPublic":true,"showcasePagePath":"data/products/<id>/showcase.html"}'
+  -d '{"expectedUpdatedAt":"<from latest fetch>","isPublic":true,"showcasePagePath":"data/products/<id>/showcase.html"}'
 ```
+
+> **Why PATCH after Step 4**: keeping `isPublic=false` and `showcasePagePath=""` during the writing window prevents a half-finished showcase from leaking onto `/showcase` if any Step 4 step throws.
 
 ### Step 6 — Verify
 
@@ -149,11 +186,13 @@ Tell the user: "Done. Visit `http://localhost:5180/showcase/<id>` to see it. The
 
 - Don't `rm -f data/vibe-studio.sqlite` for any reason — user data is in there
 - Don't write `runCommand` instructions that destroy DB state
-- Don't fill in features you can't verify from README / package.json / src — write a generic placeholder, not a fabrication
+- Don't silently overwrite a seed-placeholder product just because names match — *do* overwrite it via PATCH (Cases A above), but with the real metadata you're about to fill in, not with a duplicate entry
+- Don't fill in features you can't verify from README / CLAUDE.md / package.json / src — write a generic placeholder section ("Project Overview") with a one-line "see README for details", not a fabrication
 - Don't include a play/app-store rating, user count, or testimonials — invent nothing
 - Don't load any external resource (images, fonts, scripts) in the showcase HTML — iframe sandbox will block
 - Don't add a "TODO" or "fixme" placeholder to the showcase page; it ships as-is
 - Don't change the seed block in `src/server/sqlite.ts` unless the user asks
+- Don't default `userCount` to anything other than `0` — let the user set it
 
 ## Appendix: where things live in this project
 
