@@ -73,7 +73,9 @@ describe('showcase SQL filter', () => {
 
   it('getPublicProduct returns null for non-public products', () => {
     const all = repo.listProducts(true)
-    expect(repo.getPublicProduct(String(all[0].id))).toBeUndefined()
+    const product = all.find(p => p.name !== 'Flora')!
+    expect(product).toBeDefined()
+    expect(repo.getPublicProduct(String(product.id))).toBeUndefined()
   })
 })
 
@@ -92,8 +94,9 @@ describe('showcase API', () => {
   it('GET /api/showcase/products/:id returns 404 for private or archived', async () => {
     const repo = createSqliteRepository(':memory:')
     const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
-    const all = repo.listProducts(true)
-    const res = await invoke(handler, 'GET', `/api/showcase/products/${all[0].id}`)
+    const product = repo.listProducts(true).find(p => p.name !== 'Flora')!
+    expect(product).toBeDefined()
+    const res = await invoke(handler, 'GET', `/api/showcase/products/${product.id}`)
     expect(res.status).toBe(404)
     repo.close()
   })
@@ -121,8 +124,9 @@ describe('showcase pages API', () => {
   it('GET /api/showcase/pages/:id returns 404 when product is private or archived', async () => {
     const repo = createSqliteRepository(':memory:')
     const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
-    const all = repo.listProducts(true)
-    const res = await invoke(handler, 'GET', `/api/showcase/pages/${all[0].id}`)
+    const product = repo.listProducts(true).find(p => p.name !== 'Flora')!
+    expect(product).toBeDefined()
+    const res = await invoke(handler, 'GET', `/api/showcase/pages/${product.id}`)
     expect(res.status).toBe(404)
     repo.close()
   })
@@ -130,9 +134,10 @@ describe('showcase pages API', () => {
   it('GET /api/showcase/pages/:id returns 404 when showcasePagePath is empty', async () => {
     const repo = createSqliteRepository(':memory:')
     const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
-    const all = repo.listProducts(true)
-    repo.updateProduct(String(all[0].id), { isPublic: true, showcasePagePath: '' } as any)
-    const res = await invoke(handler, 'GET', `/api/showcase/pages/${all[0].id}`)
+    const product = repo.listProducts(true).find(p => p.name !== 'Flora')!
+    expect(product).toBeDefined()
+    repo.updateProduct(String(product.id), { isPublic: true, showcasePagePath: '' } as any)
+    const res = await invoke(handler, 'GET', `/api/showcase/pages/${product.id}`)
     expect(res.status).toBe(404)
     repo.close()
   })
