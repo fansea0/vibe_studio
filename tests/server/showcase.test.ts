@@ -179,4 +179,37 @@ describe('showcase pages API with file', () => {
     expect(res.status).toBe(405)
     repo.close()
   })
+
+  it('GET /api/showcase-pages/:id/showcase.html serves HTML for any product that has a configured path', async () => {
+    const repo = createSqliteRepository(':memory:')
+    const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
+    const dir = join(process.cwd(), 'data/products/preview-test')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'showcase.html'), '<h1>preview</h1>', 'utf8')
+    try {
+      const nonFlora = repo.listProducts(true).find(p => p.name !== 'Flora')!
+      const id = String(nonFlora.id)
+      repo.updateProduct(id, { isPublic: false, showcasePagePath: `data/products/${id}/showcase.html` } as any)
+      const configuredId = id
+      await mkdir(join(process.cwd(), `data/products/${configuredId}`), { recursive: true })
+      await writeFile(join(process.cwd(), `data/products/${configuredId}/showcase.html`), '<h1>preview</h1>', 'utf8')
+      const res = await invokeRaw(handler, 'GET', `/api/showcase-pages/${configuredId}/showcase.html`)
+      expect(res.status).toBe(200)
+      expect(res.body).toBe('<h1>preview</h1>')
+    } finally {
+      await rm(join(process.cwd(), 'data/products/preview-test'), { recursive: true, force: true })
+      const configuredId = String(repo.listProducts(true).find(p => p.name !== 'Flora')!.id)
+      await rm(join(process.cwd(), `data/products/${configuredId}`), { recursive: true, force: true })
+    }
+    repo.close()
+  })
+
+  it('GET /api/showcase-pages/:id/showcase.html returns 404 when showcasePagePath is not configured', async () => {
+    const repo = createSqliteRepository(':memory:')
+    const handler = createApiHandler({ repository: repo, profileReader: async () => ({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] }) })
+    const nonFlora = repo.listProducts(true).find(p => p.name !== 'Flora')!
+    const res = await invoke(handler, 'GET', `/api/showcase-pages/${nonFlora.id}/showcase.html`)
+    expect(res.status).toBe(404)
+    repo.close()
+  })
 })
