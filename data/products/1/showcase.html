@@ -1,60 +1,722 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Flora · 自定义作品页示例</title>
-    <style>
-      :root { color-scheme: light; }
-      body {
-        margin: 0;
-        padding: 32px;
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-        background: linear-gradient(135deg, #f0fff4, #e6fffa);
-        color: #1d2130;
-      }
-      h1 { font-size: 32px; margin: 0 0 12px; letter-spacing: -0.02em; }
-      p.meta { color: #747887; font-size: 14px; margin: 0 0 24px; }
-      button {
-        padding: 10px 18px; border: 0; border-radius: 10px;
-        background: #14845a; color: white; font-weight: 700; cursor: pointer;
-        font: inherit;
-      }
-      button:hover { background: #0f6d4b; }
-      .note {
-        margin-top: 24px; padding: 12px 16px; border-radius: 10px;
-        background: rgba(255,255,255,0.6); color: #555969; font-size: 13px;
-      }
-    </style>
-  </head>
-  <body>
-    <h1 id="title">加载中…</h1>
-    <p class="meta" id="meta">等待父页面推送产品数据…</p>
-    <button id="open" style="display:none">访问应用</button>
-    <div class="note">
-      这是 <code>data/products/1/showcase.html</code> 的示例内容。
-      你可以在此文件中自由写 HTML / CSS / JavaScript，刷新作品详情页即可看到效果。
-    </div>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flora · 你的植物养护好帮手</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7faf7;
+    --surface: #ffffff;
+    --leaf-50: #f0fdf4;
+    --leaf-100: #dcfce7;
+    --leaf-300: #86efac;
+    --leaf-500: #22c55e;
+    --leaf-600: #16a34a;
+    --leaf-700: #15803d;
+    --leaf-900: #14532d;
+    --soil: #92400e;
+    --sky: #f0f9ff;
+    --ink: #0f172a;
+    --ink-soft: #475569;
+    --ink-mute: #94a3b8;
+    --border: #e2e8f0;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+    --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.06);
+    --shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.10);
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 24px;
+    --radius-xl: 32px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: var(--ink); background: var(--bg); line-height: 1.6; }
+  body { padding: 0; -webkit-font-smoothing: antialiased; }
 
-    <script>
-      window.addEventListener('message', function (event) {
-        if (event.origin !== window.location.origin) return;
-        if (!event.data || event.data.type !== 'vibe-studio:showcase-data') return;
-        var product = event.data.product;
-        document.getElementById('title').textContent = product.name;
-        document.getElementById('meta').textContent =
-          (product.icon || '') + '  ' +
-          (product.currentVersion || '—') + '  ·  ' +
-          (product.userCount || 0).toLocaleString() + ' 用户';
-        var btn = document.getElementById('open');
-        if (product.appUrl) {
-          btn.style.display = 'inline-block';
-          btn.textContent = '访问 ' + product.name;
-          btn.onclick = function () {
-            parent.postMessage({ type: 'vibe-studio:open-url', url: product.appUrl }, '*');
-          };
+  /* Layout */
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(160deg, #f0fdf4 0%, #ecfeff 60%, #f0f9ff 100%);
+    padding: 56px 0 48px;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: -40% -20% auto auto;
+    width: 60%;
+    height: 180%;
+    background: radial-gradient(circle, rgba(34, 197, 94, 0.18), transparent 65%);
+    filter: blur(40px);
+    pointer-events: none;
+  }
+  .hero-inner {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--leaf-700);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 18px;
+  }
+  .eyebrow .dot {
+    width: 6px; height: 6px;
+    background: var(--leaf-500);
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+  }
+  .hero-title {
+    font-size: clamp(40px, 6vw, 64px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 18px;
+  }
+  .hero-title em {
+    font-style: normal;
+    color: var(--leaf-600);
+    background: linear-gradient(180deg, transparent 60%, rgba(34, 197, 94, 0.25) 60%);
+    padding: 0 4px;
+  }
+  .hero-tagline {
+    font-size: 19px;
+    color: var(--ink-soft);
+    margin-bottom: 28px;
+    max-width: 480px;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+    color: var(--ink-mute);
+    font-size: 14px;
+  }
+  .hero-meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 26px;
+    background: var(--leaf-600);
+    color: white;
+    border: 0;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: transform .15s, background .15s;
+  }
+  .hero-cta:hover { background: var(--leaf-700); transform: translateY(-1px); }
+  .hero-cta .arrow { font-size: 18px; }
+
+  /* Hero illustration (pure CSS plant) */
+  .hero-art {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-width: 380px;
+    margin: 0 auto;
+  }
+  .pot {
+    position: absolute;
+    bottom: 8%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 30%;
+    background: linear-gradient(180deg, var(--soil), #7c2d12);
+    border-radius: 8px 8px 24% 24% / 8px 8px 50% 50%;
+    box-shadow: inset 0 -16px 0 rgba(0,0,0,0.18), var(--shadow-md);
+  }
+  .pot::before {
+    content: '';
+    position: absolute;
+    top: -8%;
+    left: -8%;
+    right: -8%;
+    height: 18%;
+    background: linear-gradient(180deg, #b45309, var(--soil));
+    border-radius: 8px;
+  }
+  .leaf {
+    position: absolute;
+    bottom: 38%;
+    left: 50%;
+    width: 30%;
+    height: 30%;
+    background: radial-gradient(ellipse, var(--leaf-500) 0%, var(--leaf-600) 60%, var(--leaf-700) 100%);
+    border-radius: 0 100% 0 100%;
+    transform-origin: bottom right;
+    box-shadow: var(--shadow-sm);
+    animation: sway 6s ease-in-out infinite;
+  }
+  .leaf.l2 {
+    width: 26%; height: 26%;
+    background: radial-gradient(ellipse, var(--leaf-300) 0%, var(--leaf-500) 70%, var(--leaf-600) 100%);
+    transform-origin: bottom left;
+    transform: translateX(-90%) rotate(40deg);
+    animation-delay: -2s;
+  }
+  .leaf.l3 {
+    width: 22%; height: 22%;
+    background: radial-gradient(ellipse, var(--leaf-100), var(--leaf-300) 60%, var(--leaf-500));
+    transform-origin: bottom center;
+    transform: translateX(-15%) translateY(-25%) rotate(-15deg);
+    animation-delay: -4s;
+  }
+  .stem {
+    position: absolute;
+    bottom: 38%;
+    left: 50%;
+    width: 4px;
+    height: 20%;
+    background: var(--leaf-700);
+    transform: translateX(-50%);
+    border-radius: 4px;
+  }
+  @keyframes sway {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(-6deg) scale(1.05); }
+  }
+
+  /* Section */
+  section { padding: 80px 0; }
+  .section-header { text-align: center; max-width: 720px; margin: 0 auto 48px; }
+  .section-title {
+    font-size: clamp(28px, 3.5vw, 38px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .section-subtitle { color: var(--ink-soft); font-size: 17px; }
+
+  /* Features grid */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .feature {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    box-shadow: var(--shadow-sm);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .feature:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+  .feature-icon {
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    background: var(--leaf-100);
+    color: var(--leaf-700);
+    border-radius: 12px;
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+  .feature-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .feature-desc {
+    color: var(--ink-soft);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  /* Stats */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-top: 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px 24px;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--leaf-700);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .stat-label {
+    color: var(--ink-mute);
+    font-size: 13px;
+    margin-top: 4px;
+    font-weight: 600;
+  }
+
+  /* Showcase section (window preview) */
+  .showcase {
+    background: linear-gradient(180deg, var(--sky) 0%, var(--bg) 100%);
+    padding: 80px 0;
+  }
+  .preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    margin-top: 40px;
+  }
+  .preview-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 0;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .preview-img {
+    height: 280px;
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .preview-img.calendar { background: linear-gradient(135deg, #fef3c7, #fde68a); }
+  .preview-img.plant { background: linear-gradient(135deg, #d1fae5, #6ee7b7); }
+  .preview-img.reminder { background: linear-gradient(135deg, #ddd6fe, #c4b5fd); }
+  .preview-caption {
+    padding: 18px 22px 22px;
+  }
+  .preview-title {
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .preview-desc {
+    color: var(--ink-soft);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .ui-mock {
+    position: relative;
+    width: 80%;
+    height: 80%;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 18px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ui-line { height: 12px; background: var(--leaf-500); border-radius: 6px; opacity: 0.4; }
+  .ui-line:nth-child(2) { width: 70%; opacity: 0.3; }
+  .ui-line:nth-child(3) { width: 50%; opacity: 0.2; background: var(--leaf-700); }
+  .ui-pill {
+    align-self: flex-start;
+    padding: 6px 10px;
+    background: var(--leaf-600);
+    color: white;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .calendar-mock .ui-line { background: #f59e0b; }
+  .calendar-mock .ui-pill { background: #d97706; }
+  .reminder-mock .ui-line { background: #7c3aed; }
+  .reminder-mock .ui-pill { background: #6d28d9; }
+
+  /* Testimonial */
+  .testimonials {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .testimonial {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+  }
+  .testimonial::before {
+    content: '"';
+    position: absolute;
+    top: -10px;
+    left: 18px;
+    font-size: 80px;
+    color: var(--leaf-300);
+    font-family: Georgia, serif;
+    line-height: 1;
+  }
+  .testimonial p {
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.65;
+    margin-bottom: 16px;
+    padding-top: 16px;
+  }
+  .testimonial-author {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .testimonial-avatar {
+    width: 36px; height: 36px;
+    background: var(--leaf-100);
+    color: var(--leaf-700);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+  }
+  .testimonial-name { font-weight: 700; font-size: 14px; }
+  .testimonial-meta { color: var(--ink-mute); font-size: 12px; }
+
+  /* CTA Banner */
+  .cta-banner {
+    background: linear-gradient(135deg, var(--leaf-700), var(--leaf-500));
+    border-radius: var(--radius-xl);
+    padding: 56px 40px;
+    color: white;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+  }
+  .cta-banner h2 {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .cta-banner p {
+    font-size: 17px;
+    opacity: 0.94;
+    margin-bottom: 28px;
+    max-width: 540px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Footer note */
+  .footer-note {
+    text-align: center;
+    color: var(--ink-mute);
+    font-size: 12px;
+    padding: 32px 0;
+  }
+  .footer-note code {
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+  }
+
+  @media (max-width: 900px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 32px; }
+    .hero-art { max-width: 280px; }
+    .features, .testimonials, .preview-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    section { padding: 56px 0; }
+    .hero { padding: 40px 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============== HERO ============== -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-inner">
+      <div id="hero-text">
+        <span class="eyebrow"><span class="dot"></span><span id="status-pill">Beta · 公测中</span></span>
+        <h1 class="hero-title" id="title">让每株植物<br/>都被<em>温柔以待</em></h1>
+        <p class="hero-tagline" id="tagline">
+          Flora 用拍照识别 + 智能提醒，帮你记住每一盆绿植的名字、光照偏好、浇水周期。
+          新手老手都能养好植物的小助手。
+        </p>
+        <div class="hero-meta">
+          <span id="meta-version">🌿 当前版本 —</span>
+          <span id="meta-users">🌱 2,640 名用户</span>
+          <span>📱 iOS / Android / Web</span>
+        </div>
+        <button class="hero-cta" id="cta" style="display:none" type="button">
+          <span id="cta-text">立即体验</span>
+          <span class="arrow">→</span>
+        </button>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="stem"></div>
+        <div class="leaf"></div>
+        <div class="leaf l2"></div>
+        <div class="leaf l3"></div>
+        <div class="pot"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== FEATURES ============== -->
+<section>
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">每个细节都为养护者设计</h2>
+      <p class="section-subtitle">用最顺手的方式照顾你心爱的植物 —— 不再凭感觉浇水，不再忘记施肥。</p>
+    </div>
+    <div class="features">
+      <article class="feature">
+        <div class="feature-icon">📸</div>
+        <h3 class="feature-title">拍照 1 秒识别品种</h3>
+        <p class="feature-desc">对准植物拍一张，自动识别 4,000+ 品种，给出光照、浇水、施肥建议。AI 模型在本地缓存，离线也能识别。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">⏰</div>
+        <h3 class="feature-title">智能提醒不打扰</h3>
+        <p class="feature-desc">根据天气预报和品种偏好，自动算好下次浇水时间。早上 9 点推送，绝不在深夜骚扰你和你的植物。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">📔</div>
+        <h3 class="feature-title">养护日志自动归档</h3>
+        <p class="feature-desc">每次浇水拍照自动入档，3 个月后回顾：哪些植物长势最好、哪些养护习惯最有效。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">👥</div>
+        <h3 class="feature-title">和好友一起养</h3>
+        <p class="feature-desc">把养护清单共享给室友或家人，谁浇水谁施肥自动记录。出差时也不用担心。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">🏷️</div>
+        <h3 class="feature-title">自定义物种库</h3>
+        <p class="feature-desc">AI 不认识的稀有品种可以手工建档，下次再拍就能识别。社区贡献的物种包可以一键导入。</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon">📊</div>
+        <h3 class="feature-title">每盆植物的健康卡片</h3>
+        <p class="feature-desc">看护进度、健康评分、生长照片时间轴。重要的不是浇水次数，是植物真的活得更好。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============== STATS ============== -->
+<section style="padding-top: 0;">
+  <div class="container">
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value">2,640</div><div class="stat-label">活跃用户</div></div>
+      <div class="stat-card"><div class="stat-value">4,000+</div><div class="stat-label">可识别品种</div></div>
+      <div class="stat-card"><div class="stat-value">98.7%</div><div class="stat-label">识别准确率</div></div>
+      <div class="stat-card"><div class="stat-value">4.8★</div><div class="stat-label">App Store</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== SHOWCASE / APP PREVIEW ============== -->
+<section class="showcase">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">三步，开始养护</h2>
+      <p class="section-subtitle">拍下来、识别、提醒浇水 —— 整个流程不到 30 秒。</p>
+    </div>
+    <div class="preview-grid">
+      <div class="preview-card">
+        <div class="preview-img plant">
+          <div class="ui-mock">
+            <div class="ui-pill">🌿 识别成功</div>
+            <div class="ui-line"></div>
+            <div class="ui-line"></div>
+            <div class="ui-line"></div>
+          </div>
+        </div>
+        <div class="preview-caption">
+          <div class="preview-title">拍照识别</div>
+          <div class="preview-desc">相机对准植物 → 1 秒内返回品种名、原产地、养护难度和基础需求。</div>
+        </div>
+      </div>
+      <div class="preview-card">
+        <div class="preview-img calendar">
+          <div class="ui-mock calendar-mock">
+            <div class="ui-pill">📅 本周任务</div>
+            <div class="ui-line"></div>
+            <div class="ui-line"></div>
+            <div class="ui-line"></div>
+          </div>
+        </div>
+        <div class="preview-caption">
+          <div class="preview-title">查看养护日历</div>
+          <div class="preview-desc">所有植物的浇水 / 施肥 / 换盆任务合在一张时间轴上，颜色按任务类型区分。</div>
+        </div>
+      </div>
+      <div class="preview-card">
+        <div class="preview-img reminder">
+          <div class="ui-mock reminder-mock">
+            <div class="ui-pill">🔔 该浇水啦</div>
+            <div class="ui-line"></div>
+            <div class="ui-line"></div>
+            <div class="ui-line"></div>
+          </div>
+        </div>
+        <div class="preview-caption">
+          <div class="preview-title">智能提醒</div>
+          <div class="preview-desc">根据温度、湿度、季节自动调整提醒频率。绝不在 22:00 后打扰你的周末。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== TESTIMONIALS ============== -->
+<section>
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">养花人都说好</h2>
+      <p class="section-subtitle">2,640 位用户的真实反馈。</p>
+    </div>
+    <div class="testimonials">
+      <article class="testimonial">
+        <p>养了 3 年的龟背竹一直黄叶，用了 Flora 才发现原来是浇水太勤。被提醒"等到土干再浇"之后一个月长出了新叶。</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">林</div>
+          <div>
+            <div class="testimonial-name">林小姐</div>
+            <div class="testimonial-meta">上海 · 12 盆植物</div>
+          </div>
+        </div>
+      </article>
+      <article class="testimonial">
+        <p>出差 3 周终于不担心家里的薄荷了。和室友共享养护清单，谁浇水了自动打勾，回到家植物还活蹦乱跳。</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">陈</div>
+          <div>
+            <div class="testimonial-name">陈先生</div>
+            <div class="testimonial-meta">深圳 · 8 盆植物</div>
+          </div>
+        </div>
+      </article>
+      <article class="testimonial">
+        <p>拍照识别的准确率让人惊艳。连我奶奶养了 10 年的"不知道叫啥"老桩都识别成功了。</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">汪</div>
+          <div>
+            <div class="testimonial-name">汪阿姨</div>
+            <div class="testimonial-meta">成都 · 30+ 盆植物</div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============== CTA ============== -->
+<section style="padding-top: 0;">
+  <div class="container">
+    <div class="cta-banner">
+      <h2>从今天开始，养好你的第一盆植物</h2>
+      <p>Flora 全平台免费下载，无需注册。</p>
+      <button class="hero-cta" id="cta-bottom" type="button" style="background: white; color: var(--leaf-700);">
+        <span id="cta-bottom-text">立即体验</span>
+        <span class="arrow">→</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<div class="footer-note">
+  此展示页由 <code>data/products/1/showcase.html</code> 渲染 · 数据由父页面通过 postMessage 注入
+</div>
+
+<script>
+  (function () {
+    'use strict';
+    var product = null;
+
+    window.addEventListener('message', function (event) {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.type !== 'vibe-studio:showcase-data') return;
+      product = event.data.product;
+      if (!product) return;
+
+      // Status pill
+      var statusLabels = {
+        developing: '开发中',
+        beta: '公测中',
+        released: '已发布',
+        archived: '已归档',
+      };
+      var statusEl = document.getElementById('status-pill');
+      if (statusEl && product.status) {
+        var label = statusLabels[product.status] || product.status;
+        statusEl.textContent = label + ' · Flora';
+      }
+
+      // Title with product name
+      var titleEl = document.getElementById('title');
+      if (titleEl && product.name) {
+        titleEl.innerHTML =
+          '欢迎来到<br><em>' + escapeHtml(product.name) + '</em>';
+      }
+
+      // Meta line
+      var verEl = document.getElementById('meta-version');
+      if (verEl && product.currentVersion && product.currentVersion !== '—') {
+        verEl.textContent = '🌿 当前版本 ' + product.currentVersion;
+      }
+      var usersEl = document.getElementById('meta-users');
+      if (usersEl && typeof product.userCount === 'number' && product.userCount > 0) {
+        usersEl.textContent = '🌱 ' + product.userCount.toLocaleString() + ' 名用户';
+      }
+
+      // CTA buttons (visible only when product has appUrl)
+      if (product.appUrl) {
+        var cta = document.getElementById('cta');
+        var ctaText = document.getElementById('cta-text');
+        var ctaBottom = document.getElementById('cta-bottom');
+        var ctaBottomText = document.getElementById('cta-bottom-text');
+        var ctaLabel = '立即体验 ' + product.name;
+        if (ctaText) ctaText.textContent = ctaLabel;
+        if (cta) {
+          cta.style.display = 'inline-flex';
+          cta.onclick = openUrl.bind(null, product.appUrl);
         }
-      });
-    </script>
-  </body>
+        if (ctaBottomText) ctaBottomText.textContent = ctaLabel;
+        if (ctaBottom) ctaBottom.onclick = openUrl.bind(null, product.appUrl);
+      }
+    });
+
+    function openUrl(url) {
+      try {
+        parent.postMessage({ type: 'vibe-studio:open-url', url: url }, '*');
+      } catch (err) { /* ignore */ }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  })();
+</script>
+
+</body>
 </html>
