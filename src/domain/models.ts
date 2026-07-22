@@ -19,6 +19,7 @@ export interface Product {
   isDeleted?: boolean
   archivedAt: string | null
   isPublic?: boolean
+  showcasePagePath?: string
   createdAt: string
   updatedAt: string
 }
@@ -33,6 +34,7 @@ export interface PublicProduct {
   userCount: number
   appUrl: string | null
   updatedAt: string
+  showcasePagePath: string
 }
 
 export type SocialPlatform = 'github' | 'twitter' | 'website' | 'linkedin' | 'wechat'
