@@ -44,6 +44,58 @@ SQLite API 与前端由 Vite 插件在同一端口提供，开发地址固定为
 - 个人信息、tagline、关于我段落、联系方式和社交链接在 `data/showcase-profile.json` 中配置，修改后需要重启 dev server。
 - 详情页 `/showcase/:productId` 仅对公开且未归档的产品可见；不公开或已归档的 ID 返回 404。
 
+## 自定义作品页
+
+每个公开产品都可以挂一个完全自定义的 HTML 展示页，用 iframe 在作品详情页里加载。
+
+### 使用方式
+
+1. 在 `data/products/<product-id>/showcase.html` 创建 HTML 文件
+2. 在工作台 → 产品设置 → **自定义作品页路径** 填入路径（例如 `data/products/1/showcase.html`）
+3. 重启 dev server（Vite 需要重新读取新文件）
+4. 访问 `/showcase/<product-id>` 即可看到你的自定义作品页
+
+作品页 HTML 是**沙箱化**的（`sandbox="allow-scripts"`，**不**含 `allow-same-origin`），可以自由写 CSS/JS/动画/3D，但拿不到主站的 cookie / localStorage。
+
+**重要约束**：
+- HTML 文件必须放在 `data/products/<你的产品ID>/showcase.html` 下，**不能跨产品访问其他产品的目录**（`/api/showcase/pages/:id` 路由会拒绝）
+- 产品 ID 在 SQLite 里查看（工作台 → 产品网格 → 点击产品名 → 看 URL 中的 `:productId`）
+
+### 接收产品数据
+
+父页面在 iframe 加载完成后会用 `postMessage` 推送产品数据：
+
+```html
+<script>
+  window.addEventListener('message', function (event) {
+    if (event.origin !== window.location.origin) return;
+    if (event.data && event.data.type === 'vibe-studio:showcase-data') {
+      var product = event.data.product;
+      document.body.innerHTML = '<h1>' + product.name + '</h1>' +
+        '<p>当前版本：' + product.currentVersion + '</p>';
+    }
+  });
+</script>
+```
+
+`product` 字段包含：`id, name, description, icon, status, currentVersion, userCount, appUrl, updatedAt, showcasePagePath`。
+
+### 打开外链（访问应用等）
+
+由于沙箱拦截 `target="_blank"`，作品页想打开外链时应通过 `parent.postMessage` 通知主页面：
+
+```html
+<button onclick="parent.postMessage({ type: 'vibe-studio:open-url', url: 'https://example.com' }, '*')">
+  访问应用
+</button>
+```
+
+主页面会用 `window.open(url, '_blank', 'noopener,noreferrer')` 打开。
+
+### 示例
+
+完整可参考的示例见 `data/products/1/showcase.html`（首次启动时会作为 Flora 的 demo 启用）。
+
 ## 部署说明
 
 应用使用 `BrowserRouter`。生产服务器必须把未知深链 fallback 到 `index.html`：Nginx 可配置 `try_files $uri $uri/ /index.html`；Vercel 与 Netlify 请启用 SPA rewrite（将 `/*` 重写到 `/index.html`）。
