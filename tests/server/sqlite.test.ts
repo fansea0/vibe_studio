@@ -29,7 +29,7 @@ describe('sqlite repository', () => {
 
   it('exposes comments for every schema field and filters deleted rows', () => {
     const r = createSqliteRepository(':memory:'); const p = r.listProducts()[0]
-    expect(Object.keys(schemaComments.products)).toHaveLength(18)
+    expect(Object.keys(schemaComments.products)).toHaveLength(19)
     expect(Object.keys(schemaComments.work_items)).toHaveLength(11)
     const w = r.createWorkItem(p.id, { type: 'bug', title: 'x', priority: 'low', dueDate: null, status: 'todo' })
     const v = r.createVersion(p.id, { number: 'delete-me', status: 'planned', releasedAt: null, notes: '' })
@@ -78,6 +78,15 @@ describe('sqlite repository', () => {
     const w = r.createWorkItem(p.id, { type: 'bug', title: 'x', priority: 'low', dueDate: null, status: 'todo' })
     expect(() => r.updateWorkItem(w.id, { title: '' })).toThrow(RepositoryError)
     r.close()
+  })
+
+  it('createProduct and updateProduct persist showcase_page_path', () => {
+    const repo = createSqliteRepository(':memory:')
+    const created = repo.createProduct({ name: 'TestProduct', description: 'desc', productType: 'web-app', icon: '✨', status: 'developing', completionPercent: 0, userCount: 0, userCountSource: '', appUrl: null, repositoryPath: '', isPublic: false, showcasePagePath: 'data/products/test-product/showcase.html' } as any)
+    expect(created.showcasePagePath).toBe('data/products/test-product/showcase.html')
+    const updated = repo.updateProduct(String(created.id), { showcasePagePath: '' } as any)
+    expect(updated.showcasePagePath).toBe('')
+    repo.close()
   })
 
   it('enables foreign keys and maps non-unique mutation failures safely', () => {
