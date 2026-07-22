@@ -90,3 +90,27 @@
   outline-offset: 3px;
   border-radius: 12px;
 }
+
+.showcase-frame {
+  width: 100%;
+  min-height: 600px;
+  height: 800px;
+  border: 1px solid #e7e8ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 14px rgba(42, 46, 70, .035);
+}
+.showcase-frame-state {
+  padding: 48px 24px;
+  border: 1px dashed #d7d8e2;
+  border-radius: 16px;
+  background: #fff;
+  text-align: center;
+  color: #747887;
+}
+.showcase-frame-state button {
+  margin-top: 16px;
+}
+@media (max-width: 900px) {
+  .showcase-frame { height: 600px; }
+}

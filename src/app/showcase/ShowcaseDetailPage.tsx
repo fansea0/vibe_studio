@@ -1,6 +1,7 @@
 import { useCommitPolling } from '../../client/useCommitPolling'
 import { useShowcaseProduct } from './useShowcaseProduct'
 import { productStatusLabels } from '../productPresentation'
+import { ProductShowcaseFrame } from './ProductShowcaseFrame'
 
 interface Props { productId: string }
 
@@ -29,9 +30,13 @@ export function ShowcaseDetailPage({ productId }: Props) {
         {product.appUrl && <a className="showcase-cta" href={product.appUrl} target="_blank" rel="noopener noreferrer">访问应用</a>}
       </header>
       <div className="showcase-detail-body">
-        <section className="showcase-detail-desc">
-          <p>{product.description || '暂无简介'}</p>
-        </section>
+        {product.showcasePagePath ? (
+          <ProductShowcaseFrame product={product} />
+        ) : (
+          <section className="showcase-detail-desc">
+            <p>{product.description || '暂无简介'}</p>
+          </section>
+        )}
         <aside className="showcase-detail-meta">
           <div><strong>{product.userCount.toLocaleString()}</strong><span>用户</span></div>
           <div><strong>{product.currentVersion}</strong><span>当前版本</span></div>
