@@ -28,6 +28,7 @@ const isNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 const isNullableString = (value: unknown): value is string | null =>
   value === null || isString(value)
+const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean'
 const RFC3339_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
 
@@ -87,10 +88,15 @@ const isWorkItem = (value: unknown): value is WorkItem =>
   isNonEmptyString(value.id) &&
   isNonEmptyString(value.productId) &&
   isOneOf(value.type, ['requirement', 'bug']) &&
-  isString(value.title) &&
+  isNonEmptyString(value.title) &&
+  isString(value.description) &&
+  isString(value.assignee) &&
   isOneOf(value.priority, ['low', 'medium', 'high', 'urgent']) &&
   isNullableIsoDate(value.dueDate) &&
   isOneOf(value.status, ['todo', 'in_progress', 'done']) &&
+  isBoolean(value.isDeleted) &&
+  isNullableIsoDate(value.deletedAt) &&
+  isString(value.deletedBy) &&
   isIsoDate(value.createdAt) &&
   isIsoDate(value.updatedAt)
 
