@@ -187,7 +187,7 @@ POST   /api/products/:id/work-items/:wid/restore          body: { expectedUpdate
 DELETE /api/products/:id/work-items/:wid/permanent        body: { expectedUpdatedAt }        → 200 null
 ```
 
-`actor` 取自请求 header `X-Vibe-Actor`（可空字符串默认）。
+`actor` 优先取请求 header `X-Vibe-Actor`；缺省时回退到请求 body 中的 `actor` 字段；都缺则取空字符串。前端 client API 始终传 `actor`（未登录用户为 `''`），服务端兜底默认值为 `''`。
 
 Query 语义：
 
@@ -288,7 +288,7 @@ src/styles/
 - 底部：**活动时间线**（最新在上）：
   - created：{actor} 创建
   - status_changed：从 {fromStatus} → {toStatus}
-  - edited：{actor} 修改了 {meta.field}（解析 meta JSON）
+  - edited：{actor} 修改了 {meta.field}（meta 形如 `{ field: 'title' | 'priority' | 'dueDate' | 'type' | 'assignee' | 'description', from: <旧值>, to: <新值> }`，仅记变化的字段名，不记完整快照）
   - commented：{actor} 评论
   - deleted / restored / purged：{actor} {动作} 任务
 - 关闭：右上角 X 或 ESC
