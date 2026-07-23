@@ -1,4 +1,4 @@
-import type { CommitSummary, MarkdownDocument, Product, ProductVersion, PublicProduct, ShowcaseProfile, WorkItem } from '../domain/models'
+import type { CommitSummary, MarkdownDocument, Product, ProductVersion, PublicProduct, ShowcaseProfile, WorkItem, WorkItemComment, WorkItemEvent } from '../domain/models'
 
 export interface StudioSnapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[]; documents: MarkdownDocument[] }
 export interface ApiError extends Error { code?: string; status?: number }
@@ -41,6 +41,25 @@ export const archiveProduct = (id: string, expectedUpdatedAt: string) => request
 export const restoreProduct = (id: string, expectedUpdatedAt: string) => request<Product>(`/api/products/${id}/restore`, json('POST', { expectedUpdatedAt }))
 export const createWorkItem = (item: WorkItem) => request<WorkItem>(`/api/products/${item.productId}/work-items`, json('POST', item))
 export const updateWorkItem = (item: WorkItem, expectedUpdatedAt: string) => request<WorkItem>(`/api/work-items/${item.id}`, json('PATCH', { ...item, expectedUpdatedAt }))
+export const listWorkItemsRaw = (productId: string, opts: { includeDeleted?: boolean; onlyDeleted?: boolean } = {}) => {
+  const params = new URLSearchParams()
+  if (opts.includeDeleted) params.set('includeDeleted', '1')
+  if (opts.onlyDeleted) params.set('onlyDeleted', '1')
+  const qs = params.toString()
+  return request<WorkItem[]>(`/api/products/${encodeURIComponent(productId)}/work-items${qs ? `?${qs}` : ''}`)
+}
+export const softDeleteWorkItem = (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) =>
+  request<WorkItem>(`/api/products/${encodeURIComponent(productId)}/work-items/${encodeURIComponent(workItemId)}`, json('DELETE', { expectedUpdatedAt, actor }))
+export const restoreWorkItem = (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) =>
+  request<WorkItem>(`/api/products/${encodeURIComponent(productId)}/work-items/${encodeURIComponent(workItemId)}/restore`, json('POST', { expectedUpdatedAt, actor }))
+export const purgeWorkItem = (productId: string, workItemId: string, expectedUpdatedAt: string) =>
+  request<null>(`/api/products/${encodeURIComponent(productId)}/work-items/${encodeURIComponent(workItemId)}/permanent`, json('DELETE', { expectedUpdatedAt }))
+export const listWorkItemComments = (productId: string, workItemId: string) =>
+  request<WorkItemComment[]>(`/api/products/${encodeURIComponent(productId)}/work-items/${encodeURIComponent(workItemId)}/comments`)
+export const createWorkItemComment = (productId: string, workItemId: string, body: { author: string; body: string }) =>
+  request<WorkItemComment>(`/api/products/${encodeURIComponent(productId)}/work-items/${encodeURIComponent(workItemId)}/comments`, json('POST', body))
+export const listWorkItemEvents = (productId: string, workItemId: string) =>
+  request<WorkItemEvent[]>(`/api/products/${encodeURIComponent(productId)}/work-items/${encodeURIComponent(workItemId)}/events`)
 export const createVersion = (version: ProductVersion) => request<ProductVersion>(`/api/products/${version.productId}/versions`, json('POST', version))
 export const updateVersion = (version: ProductVersion, expectedUpdatedAt: string) => request<ProductVersion>(`/api/versions/${version.id}`, json('PATCH', { ...version, expectedUpdatedAt }))
 export const createDocument = (document: MarkdownDocument, expectedUpdatedAt: string | null) => request<MarkdownDocument>(`/api/products/${document.productId}/documents`, json('POST', { ...document, expectedUpdatedAt }))
