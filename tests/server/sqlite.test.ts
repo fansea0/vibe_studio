@@ -30,7 +30,7 @@ describe('sqlite repository', () => {
   it('exposes comments for every schema field and filters deleted rows', () => {
     const r = createSqliteRepository(':memory:'); const p = r.listProducts()[0]
     expect(Object.keys(schemaComments.products)).toHaveLength(19)
-    expect(Object.keys(schemaComments.work_items)).toHaveLength(11)
+    expect(Object.keys(schemaComments.work_items)).toHaveLength(15)
     const w = r.createWorkItem(p.id, { type: 'bug', title: 'x', priority: 'low', dueDate: null, status: 'todo' })
     const v = r.createVersion(p.id, { number: 'delete-me', status: 'planned', releasedAt: null, notes: '' })
     const d = r.createDocument(p.id, { name: 'delete-me.md', content: 'x' })
