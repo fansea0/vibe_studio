@@ -135,4 +135,20 @@ describe('work items HTTP', () => {
     const r = await call('POST', `/api/products/1/work-items/${created.body.data.id}/comments`, { author: 'a', body: '   ' })
     expect(r.status).toBe(400)
   })
+
+  it('X-Vibe-Actor header overrides body actor when both present', async () => {
+    const created = await call('POST', '/api/products/1/work-items', { type: 'requirement', title: 'a', description: '', assignee: '', priority: 'medium', dueDate: null, status: 'todo' })
+    const id = created.body.data.id
+    const r = await call('DELETE', `/api/products/1/work-items/${id}`, { actor: 'bob' }, { 'x-vibe-actor': 'alice' })
+    expect(r.status).toBe(200)
+    const all = await call('GET', '/api/products/1/work-items?onlyDeleted=1')
+    expect(all.body.data[0].deletedBy).toBe('alice')
+  })
+
+  it('restore on versions returns validation error', async () => {
+    const v = await call('POST', '/api/products/1/versions', { number: 'v1', status: 'planned', releasedAt: null, notes: '' })
+    expect(v.status).toBe(201)
+    const r = await call('POST', '/api/products/1/versions/' + v.body.data.id + '/restore', {})
+    expect(r.status).toBeGreaterThanOrEqual(400)
+  })
 })
