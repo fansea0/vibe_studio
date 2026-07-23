@@ -16,8 +16,8 @@ import { ProductGrid } from './ProductGrid'
 import { normalizeProductLifecycle } from './productLifecycle'
 
 interface AppProps { repository?: StudioRepository; initialEntries?: string[] }
-interface Snapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[]; documents: MarkdownDocument[] }
-const empty: Snapshot = { products: [], workItems: [], versions: [], documents: [] }
+interface Snapshot { products: Product[]; workItems: WorkItem[]; versions: ProductVersion[]; documents: MarkdownDocument[]; trashWorkItems: WorkItem[] }
+const empty: Snapshot = { products: [], workItems: [], versions: [], documents: [], trashWorkItems: [] }
 
 export default function App(props: AppProps) {
   // The injectable repository remains solely as a test seam. Production always uses the SQLite HTTP API.
@@ -45,11 +45,20 @@ function AppRoutes(_props: AppProps) {
   </Routes>
 }
 
-interface StudioState { snapshot: Snapshot; error: string; handlers: { onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void> } }
+interface StudioState { snapshot: Snapshot; error: string; handlers: { onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void>; onSoftDeleteWorkItem: (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => Promise<void>; onRestoreWorkItem: (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => Promise<void>; onPurgeWorkItem: (productId: string, workItemId: string, expectedUpdatedAt: string) => Promise<void> } }
 function useStudio(): StudioState {
   const [snapshot, setSnapshot] = useState<Snapshot>(empty)
   const [error, setError] = useState('')
-  const refresh = useCallback(async () => { try { setSnapshot(await api.fetchSnapshot()); setError('') } catch { setError('无法连接到 SQLite 服务，请稍后重试。') } }, [])
+  const refresh = useCallback(async () => {
+    try {
+      const snap = await api.fetchSnapshot()
+      const trashByProduct = await Promise.all(snap.products.map(async (p) => api.listWorkItemsRaw(p.id, { onlyDeleted: true }).catch(() => [])))
+      setSnapshot({ ...snap, trashWorkItems: trashByProduct.flat() })
+      setError('')
+    } catch {
+      setError('无法连接到 SQLite 服务，请稍后重试。')
+    }
+  }, [])
   useEffect(() => { void refresh() }, [refresh])
   const mutate = useCallback(async <T,>(operation: () => Promise<T>) => { const result = await operation(); await refresh(); return result }, [refresh])
   const saveProduct = useCallback((product: Product, token: ProductMutationToken) => mutate(() => product.id && snapshot.products.some((p) => p.id === product.id) ? api.updateProduct(product, token.expectedUpdatedAt) : api.createProduct(product)), [mutate, snapshot.products])
@@ -58,7 +67,10 @@ function useStudio(): StudioState {
   const saveDocument = useCallback(async (document: MarkdownDocument, token: DocumentMutationToken) => { await mutate(() => snapshot.documents.some((x) => x.id === document.id) ? api.updateDocument(document, token.expectedUpdatedAt ?? document.updatedAt) : api.createDocument(document, token.expectedUpdatedAt)) }, [mutate, snapshot.documents])
   const archive = useCallback(async (product: Product) => { await mutate(() => api.archiveProduct(product.id, product.updatedAt)) }, [mutate])
   const restore = useCallback(async (product: Product) => { await mutate(() => api.restoreProduct(product.id, product.updatedAt)) }, [mutate])
-  return { snapshot, error, handlers: { onSaveProduct: saveProduct, onSaveWorkItem: saveWorkItem, onSaveVersion: saveVersion, onSaveDocument: saveDocument, onArchiveProduct: archive, onRestoreProduct: restore } }
+  const softDeleteWorkItem = useCallback(async (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => { await mutate(() => api.softDeleteWorkItem(productId, workItemId, expectedUpdatedAt, actor)) }, [mutate])
+  const restoreWorkItem = useCallback(async (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => { await mutate(() => api.restoreWorkItem(productId, workItemId, expectedUpdatedAt, actor)) }, [mutate])
+  const purgeWorkItem = useCallback(async (productId: string, workItemId: string, expectedUpdatedAt: string) => { await mutate(() => api.purgeWorkItem(productId, workItemId, expectedUpdatedAt)) }, [mutate])
+  return { snapshot, error, handlers: { onSaveProduct: saveProduct, onSaveWorkItem: saveWorkItem, onSaveVersion: saveVersion, onSaveDocument: saveDocument, onArchiveProduct: archive, onRestoreProduct: restore, onSoftDeleteWorkItem: softDeleteWorkItem, onRestoreWorkItem: restoreWorkItem, onPurgeWorkItem: purgeWorkItem } }
 }
 
 interface ProfileState { profile: import('../domain/models').ShowcaseProfile; error: string }
@@ -104,7 +116,7 @@ function LegacyApp({ repository: injected, initialEntries }: AppProps) {
     const browserLock: MutationLock = navigator.locks ? { request: (name, operation) => navigator.locks.request(name, () => operation()) } : window.indexedDB ? createIndexedDbMutationLock(window.indexedDB) : createUnavailableMutationLock()
     return createStudioRepository(localStorage, browserLock)
   })
-  const read = (x: ReturnType<StudioRepository['readSnapshot']>) => ({ products: x.products.map((product) => normalizeProductLifecycle(product)), workItems: x.workItems, versions: x.versions, documents: x.documents })
+  const read = (x: ReturnType<StudioRepository['readSnapshot']>) => ({ products: x.products.map((product) => normalizeProductLifecycle(product)), workItems: x.workItems, versions: x.versions, documents: x.documents, trashWorkItems: [] })
   const initial = repository.readSnapshot(); const migrations = initial.products.filter((p) => normalizeProductLifecycle(p) !== p).map((p) => p.id)
   const [snapshot, setSnapshot] = useState(() => read(initial)); const [migrationError, setMigrationError] = useState('')
   const refresh = () => setSnapshot(read(repository.readSnapshot()))
