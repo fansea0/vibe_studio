@@ -41,6 +41,12 @@ export function createViteApiPlugin({ databasePath, gitReader }: { databasePath?
       } catch { /* file may not exist yet; seed will create it */ }
       if (dbAgeNote) server.config.logger.info(`[vibe-studio] using database ${file}${dbAgeNote}`)
       repo = createSqliteRepository(file)
+      try {
+        const purged = repo.purgeOldDeletedWorkItems(30)
+        if (purged > 0) server.config.logger.info(`[vibe-studio] purged ${purged} work items older than retention window`)
+      } catch (e) {
+        server.config.logger.warn(`[vibe-studio] work item retention sweep failed: ${(e as Error).message}`)
+      }
       const profilePath = path.resolve(process.cwd(), 'data/showcase-profile.json')
       // profileReader is invoked on every request so live edits to showcase-profile.json
       // take effect immediately without restarting the dev server.
