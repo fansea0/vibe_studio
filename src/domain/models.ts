@@ -58,16 +58,43 @@ export interface ShowcaseProfile {
 
 export interface CommitSummary { sha: string; shortSha: string; author: string; committedAt: string; subject: string }
 
+export type WorkItemEventType =
+  | 'created' | 'status_changed' | 'commented' | 'deleted' | 'restored' | 'purged' | 'edited'
+
 export interface WorkItem {
   id: string
   productId: string
   type: WorkItemType
   title: string
+  description: string
+  assignee: string
   priority: Priority
   dueDate: string | null
   status: WorkItemStatus
   createdAt: string
   updatedAt: string
+  isDeleted: boolean
+  deletedAt: string | null
+  deletedBy: string
+}
+
+export interface WorkItemComment {
+  id: string
+  workItemId: string
+  author: string
+  body: string
+  createdAt: string
+}
+
+export interface WorkItemEvent {
+  id: string
+  workItemId: string
+  type: WorkItemEventType
+  actor: string
+  fromStatus: WorkItemStatus | null
+  toStatus: WorkItemStatus | null
+  meta: Record<string, unknown>
+  createdAt: string
 }
 
 export interface ProductVersion {
