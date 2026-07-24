@@ -3,7 +3,7 @@ import type { Priority, WorkItem, WorkItemStatus, WorkItemType } from '../domain
 import { Modal } from './Modal'
 import { dateValueToIso, isValidDateValue } from './dateForm'
 import { mutationErrorMessage } from './mutationError'
-import { priorityLabels, priorities, workItemStatusLabels, workItemStatuses, workItemTypeLabels, workItemTypes } from './workItemPresentation'
+import { priorityLabels, priorities, workItemTypeLabels, workItemTypes } from './workItemPresentation'
 
 interface TaskDialogProps {
   productId: string
