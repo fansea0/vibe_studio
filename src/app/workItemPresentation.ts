@@ -21,3 +21,5 @@ export const priorityLabels: Record<Priority, string> = {
 export const workItemStatuses = Object.keys(workItemStatusLabels) as WorkItemStatus[]
 export const workItemTypes = Object.keys(workItemTypeLabels) as WorkItemType[]
 export const priorities = Object.keys(priorityLabels) as Priority[]
+
+export { eventTypeLabels } from './taskPresentation'

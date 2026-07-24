@@ -20,3 +20,14 @@ export const getLocalDateValue = (date: Date): string => {
 }
 
 export const isoToDateValue = (value: string | null): string => value?.slice(0, 10) ?? ''
+
+export const formatRelativeDays = (iso: string): string => {
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return iso
+  const diffMs = Date.now() - ms
+  const days = Math.floor(diffMs / (24 * 3600 * 1000))
+  if (days < 1) return '今天'
+  if (days === 1) return '昨天'
+  if (days < 7) return `${days} 天前`
+  return isoToDateValue(iso)
+}
