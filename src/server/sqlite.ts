@@ -171,16 +171,21 @@ created_at TEXT NOT NULL DEFAULT '',
 FOREIGN KEY(work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_wic_item ON work_item_comments(work_item_id, created_at);
+-- work_item_events.work_item_id FK migration: SQLite cannot ALTER COLUMN.
+-- New DBs use ON DELETE SET NULL via CREATE TABLE below so the 'purged' event row
+-- survives after purgeWorkItem / purgeOldDeletedWorkItems hard-deletes the work item
+-- (audit trail). Existing DBs: events cascade-deleted on purge — known limitation,
+-- delete data/vibe-studio.sqlite to opt into the new schema.
 CREATE TABLE IF NOT EXISTS work_item_events (
 id TEXT PRIMARY KEY NOT NULL DEFAULT '',
-work_item_id INTEGER NOT NULL DEFAULT 0,
+work_item_id INTEGER,
 type TEXT NOT NULL DEFAULT '',
 actor TEXT NOT NULL DEFAULT '',
 from_status TEXT NOT NULL DEFAULT '',
 to_status TEXT NOT NULL DEFAULT '',
 meta TEXT NOT NULL DEFAULT '{}',
 created_at TEXT NOT NULL DEFAULT '',
-FOREIGN KEY(work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+FOREIGN KEY(work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_wie_item ON work_item_events(work_item_id, created_at);`)
   const getProduct = (id: string) => { const r = db.prepare('SELECT * FROM products WHERE id=? AND is_deleted=0').get(Number(id)); return r ? mapProduct(r) : undefined }
@@ -288,7 +293,7 @@ createComment: (workItemId: string, author: string, body: string) => {
   return { id, workItemId, author, body, createdAt: t }
 },
 listEvents: (workItemId: string) => db.prepare('SELECT * FROM work_item_events WHERE work_item_id=? ORDER BY created_at ASC').all(Number(workItemId)).map((r: any) => ({
-  id: String(r.id), workItemId: String(r.work_item_id), type: r.type as any, actor: r.actor,
+  id: String(r.id), workItemId: r.work_item_id == null ? '' : String(r.work_item_id), type: r.type as any, actor: r.actor,
   fromStatus: r.from_status === '' ? null : (['todo','in_progress','done'] as WorkItemStatus[])[ ['todo','in_progress','done'].indexOf(r.from_status) ],
   toStatus: r.to_status === '' ? null : (['todo','in_progress','done'] as WorkItemStatus[])[ ['todo','in_progress','done'].indexOf(r.to_status) ],
   meta: JSON.parse(r.meta || '{}'),
