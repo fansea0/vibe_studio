@@ -108,7 +108,7 @@ function TaskDialog({ productId, onSave, onClose }: { productId: string; onSave:
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
     const now = new Date().toISOString()
-    const item: WorkItem = { id: `${productId}-${crypto.randomUUID()}`, productId, title: title.trim(), type, priority, dueDate: dueDate ? dateValueToIso(dueDate) : null, status: 'todo', createdAt: now, updatedAt: now }
+    const item: WorkItem = { id: `${productId}-${crypto.randomUUID()}`, productId, title: title.trim(), description: '', assignee: '', type, priority, dueDate: dueDate ? dateValueToIso(dueDate) : null, status: 'todo', isDeleted: false, deletedAt: null, deletedBy: '', createdAt: now, updatedAt: now }
     setBusy(true)
     try { await onSave(item); onClose() } catch (error) { setErrors({ save: mutationErrorMessage(error, '保存失败，请稍后重试') }) } finally { setBusy(false) }
   }

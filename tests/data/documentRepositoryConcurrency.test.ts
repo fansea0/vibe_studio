@@ -113,8 +113,10 @@ describe('document repository concurrency', () => {
     const documentSave = repository.saveDocument(candidate('mixed', 'mixed.md'), { expectedUpdatedAt: null })
     const productSave = repository.saveProduct({ ...product, name: 'Locked Flora' }, { expectedUpdatedAt: product.updatedAt })
     const taskSave = repository.saveWorkItem({
-      id: 'locked-task', productId: 'flora', type: 'bug', title: 'Locked', priority: 'medium',
-      dueDate: null, status: 'todo', createdAt: product.createdAt, updatedAt: product.updatedAt,
+      id: 'locked-task', productId: 'flora', type: 'bug', title: 'Locked',
+      description: '', assignee: '', priority: 'medium',
+      dueDate: null, status: 'todo', isDeleted: false, deletedAt: null, deletedBy: '',
+      createdAt: product.createdAt, updatedAt: product.updatedAt,
     })
     const versionSave = repository.saveVersion({
       id: 'locked-version', productId: 'flora', number: '9.9.9', status: 'planned', releasedAt: null,

@@ -99,7 +99,7 @@ describe('work items soft delete + events', () => {
   it('purgeOldDeletedWorkItems removes items older than retention', () => {
     const repo = makeRepo()
     const a = repo.createWorkItem('1', { type: 'requirement', title: 'a', description: '', assignee: '', priority: 'medium', dueDate: null, status: 'todo' })
-    const b = repo.createWorkItem('1', { type: 'requirement', title: 'b', description: '', assignee: '', priority: 'medium', dueDate: null, status: 'todo' })
+    repo.createWorkItem('1', { type: 'requirement', title: 'b', description: '', assignee: '', priority: 'medium', dueDate: null, status: 'todo' })
     repo.softDeleteWorkItem(a.id, 'bob', a.updatedAt)
     repo.transaction(() => { /* noop — ensures transaction method exists */ })
     const purged = repo.purgeOldDeletedWorkItems(30)
