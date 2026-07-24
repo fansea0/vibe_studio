@@ -8,7 +8,7 @@ import { ShowcaseDetailPage } from './showcase/ShowcaseDetailPage'
 import { ShowcaseShell } from './showcase/ShowcaseShell'
 import { WorksSection } from './showcase/WorksSection'
 import { createIndexedDbMutationLock, createStudioRepository, createUnavailableMutationLock, STUDIO_STORAGE_KEY, type DocumentMutationToken, type MutationLock, type ProductMutationToken, type StudioRepository } from '../data/studioRepository'
-import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
+import type { MarkdownDocument, Product, ProductVersion, WorkItem, WorkItemComment, WorkItemEvent } from '../domain/models'
 import * as api from '../client/api'
 import { AppShell } from './AppShell'
 import { ProductDetail } from './ProductDetail'
@@ -40,12 +40,12 @@ function AppRoutes(_props: AppProps) {
     <Route path="/showcase/*" element={<ShowcaseShell><ShowcaseNotFound /></ShowcaseShell>} />
     <Route path="/" element={<Navigate to="/products" replace />} />
     <Route path="/products" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductGrid {...studio.snapshot} {...studio.handlers} /></Workspace>} />
-    <Route path="/products/:productId/:tab?" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductDetail {...studio.snapshot} {...studio.handlers} /></Workspace>} />
+    <Route path="/products/:productId/:tab?" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductDetail {...studio.snapshot} {...studio.handlers} comments={studio.comments} events={studio.events} /></Workspace>} />
     <Route path="*" element={<Navigate to="/products" replace />} />
   </Routes>
 }
 
-interface StudioState { snapshot: Snapshot; error: string; handlers: { onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void>; onSoftDeleteWorkItem: (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => Promise<void>; onRestoreWorkItem: (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => Promise<void>; onPurgeWorkItem: (productId: string, workItemId: string, expectedUpdatedAt: string) => Promise<void> } }
+interface StudioState { snapshot: Snapshot; error: string; comments: Record<string, WorkItemComment[]>; events: Record<string, WorkItemEvent[]>; handlers: { onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void>; onDeleteWorkItem: (item: WorkItem) => Promise<void>; onRestoreWorkItem: (item: WorkItem) => Promise<void>; onPurgeWorkItem: (item: WorkItem) => Promise<void>; onLoadComments: (item: WorkItem) => Promise<void>; onLoadEvents: (item: WorkItem) => Promise<void>; onCreateComment: (item: WorkItem, body: { author: string; body: string }) => Promise<void> } }
 function useStudio(): StudioState {
   const [snapshot, setSnapshot] = useState<Snapshot>(empty)
   const [error, setError] = useState('')
@@ -70,7 +70,28 @@ function useStudio(): StudioState {
   const softDeleteWorkItem = useCallback(async (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => { await mutate(() => api.softDeleteWorkItem(productId, workItemId, expectedUpdatedAt, actor)) }, [mutate])
   const restoreWorkItem = useCallback(async (productId: string, workItemId: string, expectedUpdatedAt: string, actor: string) => { await mutate(() => api.restoreWorkItem(productId, workItemId, expectedUpdatedAt, actor)) }, [mutate])
   const purgeWorkItem = useCallback(async (productId: string, workItemId: string, expectedUpdatedAt: string) => { await mutate(() => api.purgeWorkItem(productId, workItemId, expectedUpdatedAt)) }, [mutate])
-  return { snapshot, error, handlers: { onSaveProduct: saveProduct, onSaveWorkItem: saveWorkItem, onSaveVersion: saveVersion, onSaveDocument: saveDocument, onArchiveProduct: archive, onRestoreProduct: restore, onSoftDeleteWorkItem: softDeleteWorkItem, onRestoreWorkItem: restoreWorkItem, onPurgeWorkItem: purgeWorkItem } }
+  const deleteWorkItem = useCallback(async (item: WorkItem) => { await softDeleteWorkItem(item.productId, item.id, item.updatedAt, item.deletedBy) }, [softDeleteWorkItem])
+  const restoreTrashWorkItem = useCallback(async (item: WorkItem) => { await restoreWorkItem(item.productId, item.id, item.updatedAt, item.deletedBy) }, [restoreWorkItem])
+  const purgeTrashWorkItem = useCallback(async (item: WorkItem) => { await purgeWorkItem(item.productId, item.id, item.updatedAt) }, [purgeWorkItem])
+  const [comments, setComments] = useState<Record<string, WorkItemComment[]>>({})
+  const [events, setEvents] = useState<Record<string, WorkItemEvent[]>>({})
+  const loadComments = useCallback(async (item: WorkItem) => {
+    try {
+      const list = await api.listWorkItemComments(item.productId, item.id)
+      setComments((prev) => ({ ...prev, [item.id]: list }))
+    } catch { /* drawer will show empty list */ }
+  }, [])
+  const loadEvents = useCallback(async (item: WorkItem) => {
+    try {
+      const list = await api.listWorkItemEvents(item.productId, item.id)
+      setEvents((prev) => ({ ...prev, [item.id]: list }))
+    } catch { /* drawer will show empty list */ }
+  }, [])
+  const createComment = useCallback(async (item: WorkItem, body: { author: string; body: string }) => {
+    await api.createWorkItemComment(item.productId, item.id, body)
+    await loadComments(item)
+  }, [loadComments])
+  return { snapshot, error, comments, events, handlers: { onSaveProduct: saveProduct, onSaveWorkItem: saveWorkItem, onSaveVersion: saveVersion, onSaveDocument: saveDocument, onArchiveProduct: archive, onRestoreProduct: restore, onDeleteWorkItem: deleteWorkItem, onRestoreWorkItem: restoreTrashWorkItem, onPurgeWorkItem: purgeTrashWorkItem, onLoadComments: loadComments, onLoadEvents: loadEvents, onCreateComment: createComment } }
 }
 
 interface ProfileState { profile: import('../domain/models').ShowcaseProfile; error: string }
@@ -129,10 +150,10 @@ function LegacyApp({ repository: injected, initialEntries }: AppProps) {
   useEffect(() => { const handler = (e: StorageEvent) => { if (e.key === null || e.key === STUDIO_STORAGE_KEY) refresh() }; window.addEventListener('storage', handler); return () => window.removeEventListener('storage', handler) }, [repository])
   useEffect(() => { if (!migrations.length) return; void (async () => { try { for (const id of migrations) await repository.migrateLegacyProductLifecycle(id); refresh() } catch { setMigrationError('旧版产品数据迁移失败，当前已使用安全视图。') } })() }, [])
   const Router = initialEntries ? MemoryRouter : BrowserRouter
-  return <Router {...(initialEntries ? { initialEntries } : {})}><StudioRoutes snapshot={snapshot} error={migrationError} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archive} onRestoreProduct={restore} /></Router>
+  return <Router {...(initialEntries ? { initialEntries } : {})}><StudioRoutes snapshot={snapshot} error={migrationError} onSaveProduct={saveProduct} onSaveWorkItem={saveWorkItem} onSaveVersion={saveVersion} onSaveDocument={saveDocument} onArchiveProduct={archive} onRestoreProduct={restore} comments={{}} events={{}} onDeleteWorkItem={async () => undefined} onRestoreWorkItem={async () => undefined} onPurgeWorkItem={async () => undefined} onLoadComments={async () => undefined} onLoadEvents={async () => undefined} onCreateComment={async () => undefined} /></Router>
 }
 
-interface RouteProps { snapshot: Snapshot; error: string; onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void> }
+interface RouteProps { snapshot: Snapshot; error: string; onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void>; comments: Record<string, WorkItemComment[]>; events: Record<string, WorkItemEvent[]>; onDeleteWorkItem: (item: WorkItem) => Promise<void>; onRestoreWorkItem: (item: WorkItem) => Promise<void>; onPurgeWorkItem: (item: WorkItem) => Promise<void>; onLoadComments: (item: WorkItem) => Promise<void>; onLoadEvents: (item: WorkItem) => Promise<void>; onCreateComment: (item: WorkItem, body: { author: string; body: string }) => Promise<void> }
 function StudioRoutes({ snapshot, error, ...handlers }: RouteProps) {
   return <Routes>
     <Route path="/" element={<Navigate to="/products" replace />} />

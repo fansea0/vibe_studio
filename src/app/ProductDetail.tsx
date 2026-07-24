@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { DocumentMutationToken, ProductMutationToken } from '../data/studioRepository'
-import type { MarkdownDocument, Product, ProductVersion, WorkItem } from '../domain/models'
+import type { MarkdownDocument, Product, ProductVersion, WorkItem, WorkItemComment, WorkItemEvent } from '../domain/models'
 import { deriveProductMetrics } from '../domain/productMetrics'
 import { DocumentWorkspace } from './DocumentWorkspace'
 import { ProductOverview } from './ProductOverview'
@@ -14,27 +14,39 @@ import { mutationErrorMessage } from './mutationError'
 interface ProductDetailProps {
   products: Product[]
   workItems: WorkItem[]
+  trashWorkItems: WorkItem[]
   versions: ProductVersion[]
   documents: MarkdownDocument[]
+  comments: Record<string, WorkItemComment[]>
+  events: Record<string, WorkItemEvent[]>
   onSaveProduct: (product: Product, token: ProductMutationToken) => Promise<Product | void>
   onSaveWorkItem: (item: WorkItem) => Promise<void>
   onSaveVersion: (version: ProductVersion) => Promise<void>
   onSaveDocument: (document: MarkdownDocument, token: DocumentMutationToken) => Promise<void>
   onArchiveProduct: (product: Product) => Promise<void>
   onRestoreProduct: (product: Product) => Promise<void>
+  onDeleteWorkItem: (item: WorkItem) => Promise<void>
+  onRestoreWorkItem: (item: WorkItem) => Promise<void>
+  onPurgeWorkItem: (item: WorkItem) => Promise<void>
+  onLoadComments: (item: WorkItem) => Promise<void>
+  onLoadEvents: (item: WorkItem) => Promise<void>
+  onCreateComment: (item: WorkItem, body: { author: string; body: string }) => Promise<void>
 }
 const tabs = [
   { id: 'overview', label: '概览' }, { id: 'tasks', label: '任务' }, { id: 'versions', label: '版本' },
   { id: 'documents', label: '文档' }, { id: 'settings', label: '设置' },
 ] as const
 
-export function ProductDetail({ products, workItems, versions, documents, onSaveProduct, onSaveWorkItem, onSaveVersion, onSaveDocument, onArchiveProduct, onRestoreProduct }: ProductDetailProps) {
+export function ProductDetail({ products, workItems, trashWorkItems, versions, documents, comments, events, onSaveProduct, onSaveWorkItem, onSaveVersion, onSaveDocument, onArchiveProduct, onRestoreProduct, onDeleteWorkItem, onRestoreWorkItem, onPurgeWorkItem, onLoadComments, onLoadEvents, onCreateComment }: ProductDetailProps) {
   const { productId = '', tab } = useParams()
   const navigate = useNavigate()
   const [restoreError, setRestoreError] = useState('')
   const [restoreBusy, setRestoreBusy] = useState(false)
+  const [detailItem, setDetailItem] = useState<WorkItem | null>(null)
   const product = products.find(({ id }) => id === productId)
   if (!product) return <StateCard title="产品不存在" text="未找到对应产品，它可能已被移除或链接有误。" />
+  const productWorkItems = workItems.filter(({ productId: ownerId }) => ownerId === product.id)
+  const productTrash = trashWorkItems.filter(({ productId: ownerId }) => ownerId === product.id)
   if (product.archivedAt !== null) {
     const restore = async () => {
       setRestoreBusy(true)
@@ -60,7 +72,25 @@ export function ProductDetail({ products, workItems, versions, documents, onSave
       <header className="detail-heading"><div className="detail-title"><span className="hero-icon">{product.icon}</span><div><h1>{product.name}</h1><p>{product.description || '暂未填写产品描述。'}</p></div></div><div className="detail-actions">{appUrl && <a className="external-button" href={appUrl} target="_blank" rel="noopener noreferrer">访问应用 ↗</a>}{(product.isPublic || product.showcasePagePath) && <a className="external-button showcase-button" href={`/api/showcase-pages/${encodeURIComponent(product.id)}/showcase.html`} target="_blank" rel="noopener noreferrer" title="在新标签页打开产品作品集 HTML 页面（不带 Vibe Studio 外壳，等同于查看 iframe 源）">查看产品网页 ↗</a>}</div></header>
       <nav className="tabs" aria-label="产品详情">{tabs.map(({ id, label }) => <Link key={id} aria-current={activeTab === id ? 'page' : undefined} className={activeTab === id ? 'selected' : ''} to={`/products/${product.id}/${id}`}>{label}</Link>)}</nav>
       {activeTab === 'overview' && <ProductOverview product={product} metrics={metrics} />}
-      {activeTab === 'tasks' && <TaskBoard productId={product.id} items={workItems.filter(({ productId: ownerId }) => ownerId === product.id)} onSaveWorkItem={onSaveWorkItem} />}
+      {activeTab === 'tasks' && (
+        <TaskBoard
+          productId={product.id}
+          items={productWorkItems}
+          trashItems={productTrash}
+          comments={comments}
+          events={events}
+          onSaveWorkItem={onSaveWorkItem}
+          onDeleteWorkItem={onDeleteWorkItem}
+          onRestoreWorkItem={onRestoreWorkItem}
+          onPurgeWorkItem={onPurgeWorkItem}
+          onLoadComments={onLoadComments}
+          onLoadEvents={onLoadEvents}
+          onCreateComment={onCreateComment}
+          onOpenDetail={setDetailItem}
+          onCloseDetail={() => setDetailItem(null)}
+          detailItem={detailItem}
+        />
+      )}
       {activeTab === 'versions' && <VersionList productId={product.id} versions={versions.filter(({ productId: ownerId }) => ownerId === product.id)} currentVersion={metrics.currentVersion} onSaveVersion={onSaveVersion} />}
       {activeTab === 'documents' && <DocumentWorkspace productId={product.id} documents={documents.filter(({ productId: ownerId }) => ownerId === product.id)} onSaveDocument={onSaveDocument} />}
       {activeTab === 'settings' && <ProductSettings product={product} products={products} onSaveProduct={onSaveProduct} onArchiveProduct={onArchiveProduct} onArchived={() => navigate('/products')} />}
