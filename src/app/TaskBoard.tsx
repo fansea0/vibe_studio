@@ -1,5 +1,5 @@
 import { DndContext, type DragEndEvent } from '@dnd-kit/core'
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import type { WorkItem, WorkItemComment, WorkItemEvent, WorkItemStatus } from '../domain/models'
 import { resolveWorkItemStatus } from './workItemTransition'
 import { mutationErrorMessage } from './mutationError'
@@ -34,7 +34,7 @@ export function TaskBoard(props: TaskBoardProps) {
   const { productId, items, trashItems, comments, events, onSaveWorkItem, onDeleteWorkItem, onRestoreWorkItem, onPurgeWorkItem, onLoadComments, onLoadEvents, onCreateComment, onOpenDetail, onCloseDetail, detailItem } = props
   const [view, setView] = useState<'board' | 'trash'>('board')
   const [filter, setFilter] = useState<Filter>('all')
-  const [creating, setCreating] = useState(false)
+  const [quickTitle, setQuickTitle] = useState('')
   const [editing, setEditing] = useState<WorkItem | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<WorkItem | null>(null)
   const [confirmPurge, setConfirmPurge] = useState<WorkItem | null>(null)
@@ -50,6 +50,31 @@ export function TaskBoard(props: TaskBoardProps) {
   }
 
   const handleSave = async (item: WorkItem) => { await onSaveWorkItem(item) }
+
+  const handleQuickCreate = async (event: FormEvent) => {
+    event.preventDefault()
+    const title = quickTitle.trim()
+    if (!title || busy) return
+    const now = new Date().toISOString()
+    const draft: WorkItem = {
+      id: `${productId}-${crypto.randomUUID()}`,
+      productId,
+      type: 'requirement',
+      title,
+      description: '',
+      assignee: '',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo' as WorkItemStatus,
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: '',
+      createdAt: now,
+      updatedAt: now,
+    }
+    setBusy(true); setError('')
+    try { await onSaveWorkItem(draft); setQuickTitle('') } catch (e) { setError(mutationErrorMessage(e, '保存失败，请稍后重试')) } finally { setBusy(false) }
+  }
 
   const handleDelete = async (item: WorkItem) => {
     setConfirmDelete(null)
@@ -85,10 +110,17 @@ export function TaskBoard(props: TaskBoardProps) {
           <h2 id="task-board-title">需求与 Bug</h2>
           <p>按状态跟进产品工作项，删除后可从回收站恢复。</p>
         </div>
-        <div className="work-heading-actions">
-          <button aria-label="新建任务" onClick={() => setCreating(true)} disabled={busy}>＋ 新建任务</button>
-        </div>
       </div>
+      <form className="quick-create" onSubmit={handleQuickCreate}>
+        <input
+          aria-label="新建任务标题"
+          placeholder="输入任务标题后回车快速创建，截止日期/描述等可在详情中补充"
+          value={quickTitle}
+          onChange={(e) => setQuickTitle(e.target.value)}
+          disabled={busy}
+        />
+        <button type="submit" disabled={busy || !quickTitle.trim()}>创建</button>
+      </form>
 
       <nav className="task-view-tabs" aria-label="任务视图切换">
         <button type="button" className={view === 'board' ? 'selected' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}>看板</button>
@@ -131,7 +163,6 @@ export function TaskBoard(props: TaskBoardProps) {
         <TaskTrashList items={trashItems} onRestore={(i) => void handleRestore(i)} onPurge={(i) => setConfirmPurge(i)} />
       )}
 
-      {creating && <TaskDialog productId={productId} onSave={handleSave} onClose={() => setCreating(false)} />}
       {editing && <TaskDialog productId={productId} initial={editing} onSave={handleSave} onClose={() => setEditing(null)} />}
 
       {confirmDelete && (

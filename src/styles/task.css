@@ -4,6 +4,12 @@
 .work-heading p { margin: 0; color: #747887; }
 .work-heading-actions { display: flex; gap: 8px; align-items: center; }
 
+.quick-create { display: flex; gap: 8px; }
+.quick-create input { flex: 1; padding: 10px 14px; border: 1px solid #e3e4ec; border-radius: 10px; font-size: 14px; background: #fff; }
+.quick-create input:focus { outline: 2px solid #6259e8; outline-offset: 1px; border-color: transparent; }
+.quick-create button { padding: 10px 18px; border: 0; border-radius: 10px; background: #6259e8; color: #fff; font-weight: 600; cursor: pointer; }
+.quick-create button:disabled { background: #b9b3ee; cursor: not-allowed; }
+
 .task-view-tabs { display: flex; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid #e6e7ed; }
 .task-view-tabs button { padding: 8px 14px; border: 0; border-radius: 8px 8px 0 0; color: #686c79; background: transparent; font-weight: 700; cursor: pointer; }
 .task-view-tabs button.selected { color: #5148d6; background: #f0efff; }

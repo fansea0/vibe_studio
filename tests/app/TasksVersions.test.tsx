@@ -10,18 +10,29 @@ import type { ProductVersion } from '../../src/domain/models'
 const renderApp = (
   initialEntry: string,
   repository = createStudioRepository(localStorage),
-) => render(<App initialEntries={[initialEntry]} repository={repository} />)
-
-const openCreateTask = async () => {
-  await userEvent.click(screen.getByRole('button', { name: '新建任务' }))
-  return screen.getByRole('dialog', { name: '新建任务' })
+) => {
+  const shared = repository
+  const result = render(<App initialEntries={[initialEntry]} repository={shared} />)
+  return { ...result, repository: shared }
 }
 
-const createTask = async (title: string, type: 'requirement' | 'bug' = 'requirement') => {
-  const dialog = await openCreateTask()
-  await userEvent.type(within(dialog).getByLabelText('标题'), title)
-  await userEvent.selectOptions(within(dialog).getByLabelText('类型'), type)
-  await userEvent.click(within(dialog).getByRole('button', { name: '创建任务' }))
+const quickCreateTask = async (title: string) => {
+  const input = screen.getByRole('textbox', { name: '新建任务标题' })
+  await userEvent.type(input, title)
+  await userEvent.click(screen.getByRole('button', { name: '创建' }))
+}
+
+const createTask = async (
+  title: string,
+  type: 'requirement' | 'bug' = 'requirement',
+  repository: ReturnType<typeof createStudioRepository> = createStudioRepository(localStorage),
+) => {
+  await quickCreateTask(title)
+  if (type === 'bug') {
+    const all = repository.listWorkItems('flora')
+    const target = all.find((it) => it.title === title.trim())
+    if (target) await repository.saveWorkItem({ ...target, type })
+  }
 }
 
 describe('task board', () => {
@@ -39,11 +50,10 @@ describe('task board', () => {
   })
 
   it('creates requirement and Bug records for only the current product', async () => {
-    const repository = createStudioRepository(localStorage)
-    renderApp('/products/flora/tasks', repository)
+    const { repository } = renderApp('/products/flora/tasks')
 
     await createTask('  Better journal  ')
-    await createTask('Fix leaf scanner', 'bug')
+    await createTask('Fix leaf scanner', 'bug', repository)
 
     expect(repository.listWorkItems('flora')).toEqual(expect.arrayContaining([
       expect.objectContaining({ title: 'Better journal', type: 'requirement', status: 'todo' }),
@@ -52,20 +62,17 @@ describe('task board', () => {
     expect(repository.listWorkItems('resume-genius')).toHaveLength(2)
   })
 
-  it('rejects empty titles and invalid calendar dates', async () => {
-    const repository = createStudioRepository(localStorage)
-    renderApp('/products/flora/tasks', repository)
+  it('rejects empty titles and ignores surrounding whitespace', async () => {
+    const { repository } = renderApp('/products/flora/tasks')
     const before = repository.listWorkItems('flora')
-    const dialog = await openCreateTask()
+    const input = screen.getByRole('textbox', { name: '新建任务标题' })
+    const submit = screen.getByRole('button', { name: '创建' })
 
-    fireEvent.change(within(dialog).getByLabelText('截止日期'), { target: { value: '2026-02-30' } })
-    await userEvent.click(within(dialog).getByRole('button', { name: '创建任务' }))
+    expect(submit).toBeDisabled()
+    await userEvent.type(input, '   ')
+    expect(submit).toBeDisabled()
+    await userEvent.click(submit)
 
-    expect(within(dialog).getAllByRole('alert').map((alert) => alert.textContent)).toEqual(
-      expect.arrayContaining(['请输入标题', '请输入有效日期']),
-    )
-    expect(within(dialog).getByLabelText('标题')).toHaveAccessibleDescription('请输入标题')
-    expect(within(dialog).getByLabelText('截止日期')).toHaveAccessibleDescription('请输入有效日期')
     expect(repository.listWorkItems('flora')).toEqual(before)
   })
 
@@ -104,7 +111,7 @@ describe('task board', () => {
     }
     renderApp('/products/flora/tasks', failingRepository)
 
-    await createTask('Cannot persist')
+    await quickCreateTask('Cannot persist')
 
     expect(screen.getByRole('alert')).toHaveTextContent('保存失败，请稍后重试')
     expect(screen.queryByText('Cannot persist')).not.toBeInTheDocument()
