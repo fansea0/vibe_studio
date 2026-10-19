@@ -18,7 +18,7 @@ Vibe Studio 是一个**本地优先的产品管理工作台**（React 18 + Vite 
 |---|---|---|
 | UI 框架 | React 18 + React Router v7 | `BrowserRouter`，SPA fallback 需服务器配置 |
 | 语言 | TypeScript 6 + 严格模式 | `verbatimModuleSyntax`、`erasableSyntaxOnly` |
-| 构建 | Vite 7 + `@vitejs/plugin-react` | `strictPort: true`，端口固定 `6000` |
+| 构建 | Vite 7 + `@vitejs/plugin-react` | 端口 `5173`；`npm run dev` 会先释放端口再启动 |
 | 样式 | 原生 CSS（`src/styles/global.css`） | 无 CSS 框架 |
 | 拖拽 | `@dnd-kit/core` + `@dnd-kit/sortable` | 用于 TaskBoard 看板 |
 | Markdown | `react-markdown` + `rehype-sanitize` | 自定义 `img`/`a` 渲染器 |
@@ -336,13 +336,13 @@ createViteApiPlugin({ databasePath?, gitReader? }): Plugin
   4. `server.middlewares.use('/api', handler)` — `/api/*` 全部交给 Node 处理
   5. `server.httpServer?.once('close', () => repo?.close())`
 
-效果：开发态访问 `http://localhost:6000/api/*` 即 SQLite API，**无独立后端端口**。
+效果：开发态访问 `http://localhost:5173/api/*` 即 SQLite API，**无独立后端端口**。
 
 `vite.config.ts` 要点：
 
 ```ts
 plugins: [react(), createViteApiPlugin()]
-server: { port: 6000, strictPort: true }
+server: { port: 5173, strictPort: false }
 test: { environment: 'jsdom', setupFiles: './src/test/setup.ts' }
 ```
 
@@ -470,7 +470,8 @@ tests/
 
 ## 13. 开发与部署注意事项
 
-- 端口 `6000` 是 `strictPort`，被占用直接失败，**不要改回默认 5173**。
+- 端口 `5173`。`npm run dev` 通过 `scripts/dev-force.mjs` 启动：先释放被本项目 vite 进程占用的端口（SIGTERM→SIGKILL），
+  若是其他程序占用则不终止对方，自动改用下一个可用端口。`npm run dev:plain` 跳过这套逻辑。
 - 应用使用 `BrowserRouter`，生产部署必须把未知深链 fallback 到 `index.html`：
   - Nginx：`try_files $uri $uri/ /index.html`
   - Vercel/Netlify：启用 SPA rewrite
@@ -513,7 +514,7 @@ tests/
 
 ## 15. 已知/显式约束
 
-- Vite 端口固定 `6000`，不能改回 `5173`。
+- Vite 端口 `5173`；`npm run dev` 会先释放端口再启动，端口被其他程序占用时自动顺延。
 - 所有 mutation 必须传 `expectedUpdatedAt`（新建传 `null`），后端会做乐观锁。
 - `legacy StudioRepository` 仅供测试 / 历史回退；新增功能**不要走该路径**。
 - 文档名校验失败时，前端不进入保存逻辑；后端 `RepositoryError` 也会被 `mapMutationError` 归一为 `DUPLICATE`。

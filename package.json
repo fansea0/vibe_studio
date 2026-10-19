@@ -7,7 +7,9 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-force.mjs",
+    "dev:force": "node scripts/dev-force.mjs",
+    "dev:plain": "vite",
     "build": "tsc -b && npm run typecheck:test && vite build",
     "lint": "oxlint",
     "test": "vitest",

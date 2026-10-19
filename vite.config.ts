@@ -10,7 +10,9 @@ export default defineConfig({
   // 只忽略数据库文件；作品页 HTML 仍可被静态服务访问（改完需手动重启 dev server）。
   server: {
     port: 5173,
-    strictPort: true,
+    // 端口被占用时不直接失败，自动顺延到下一个可用端口。
+    // 想要「强制释放端口再启动」请用 `npm run dev`（scripts/dev-force.mjs 会先释放端口）。
+    strictPort: false,
     watch: { ignored: ['**/data/**/*.sqlite', '**/data/**/*.sqlite-*', '**/data/**/*.db', '**/data/**/*.db-*'] },
   },
   test: {

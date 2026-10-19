@@ -15,7 +15,7 @@ npm install
 ## 常用命令
 
 ```bash
-npm run dev # http://localhost:6000
+npm run dev # http://localhost:5173
 npm test -- --run
 npm run typecheck:test
 npm run build
@@ -33,7 +33,11 @@ npm run build
 
 每个产品在设置中填写本机 Git 仓库的绝对路径。工作台首次加载产品时读取最新提交，并每 60 秒刷新一次；Git 读取失败只显示提示，不影响产品、任务和文档数据。
 
-SQLite API 与前端由 Vite 插件在同一端口提供，开发地址固定为 `http://localhost:6000`。
+SQLite API 与前端由 Vite 插件在同一端口提供，开发地址为 `http://localhost:5173`。
+
+`npm run dev` 会先释放被占用的端口再启动：如果是本项目残留的 vite 进程会直接结束它并复用 5173；
+如果是其他程序占用则不强制终止，自动改用下一个可用端口（控制台会打印实际地址）。
+用 `PORT=6000 npm run dev` 可指定其他端口，`npm run dev:plain` 则完全不做端口处理。
 
 ## 作品集对外展示
 
