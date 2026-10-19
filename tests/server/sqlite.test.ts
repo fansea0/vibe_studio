@@ -10,13 +10,13 @@ describe('sqlite repository', () => {
   })
   it('rolls back transaction on foreign key failure', () => {
     const r = createSqliteRepository(':memory:')
-    expect(() => r.transaction(() => { const p = r.createProduct({name:'X',description:'',productType:'',icon:'',status:'developing',completionPercent:0,userCount:0,userCountSource:'',appUrl:null,repositoryPath:''}); r.createWorkItem('missing',{type:'bug',title:'x',description:'',assignee:'',priority:'low',dueDate:null,status:'todo'}); return p })).toThrow()
+    expect(() => r.transaction(() => { const p = r.createProduct({name:'X',description:'',icon:'',status:'developing',userCount:0,appUrl:null,repositoryPath:''}); r.createWorkItem('missing',{type:'bug',title:'x',description:'',assignee:'',priority:'low',dueDate:null,status:'todo'}); return p })).toThrow()
     expect(r.listProducts().some(p => p.name === 'X')).toBe(false)
   })
   it('supports CRUD, uniqueness, optimistic conflicts and soft delete', () => {
-    const r = createSqliteRepository(':memory:'); const p = r.createProduct({name:'  New ',description:'d',productType:'x',icon:'',status:'developing',completionPercent:1,userCount:2,userCountSource:'',appUrl:null,repositoryPath:''})
+    const r = createSqliteRepository(':memory:'); const p = r.createProduct({name:'  New ',description:'d',icon:'',status:'developing',userCount:2,appUrl:null,repositoryPath:''})
     expect(p.name).toBe('  New ')
-    expect(() => r.createProduct({name:'new',description:'',productType:'',icon:'',status:'developing',completionPercent:0,userCount:0,userCountSource:'',appUrl:null,repositoryPath:''})).toThrow(RepositoryError)
+    expect(() => r.createProduct({name:'new',description:'',icon:'',status:'developing',userCount:0,appUrl:null,repositoryPath:''})).toThrow(RepositoryError)
     r.createWorkItem(p.id,{type:'requirement',title:'t',description:'',assignee:'',priority:'high',dueDate:null,status:'todo'}); expect(r.listWorkItems(p.id)).toHaveLength(1)
     const v = r.createVersion(p.id,{number:'1.0',status:'planned',releasedAt:null,notes:''}); expect(r.listVersions(p.id)[0].id).toBe(v.id)
     const d = r.createDocument(p.id,{name:'ReadMe.MD',content:'# hi'},undefined); expect(r.listDocuments(p.id)[0].name).toBe('ReadMe.MD')
@@ -29,7 +29,7 @@ describe('sqlite repository', () => {
 
   it('exposes comments for every schema field and filters deleted rows', () => {
     const r = createSqliteRepository(':memory:'); const p = r.listProducts()[0]
-    expect(Object.keys(schemaComments.products)).toHaveLength(19)
+    expect(Object.keys(schemaComments.products)).toHaveLength(16)
     expect(Object.keys(schemaComments.work_items)).toHaveLength(15)
     const w = r.createWorkItem(p.id, { type: 'bug', title: 'x', description: '', assignee: '', priority: 'low', dueDate: null, status: 'todo' })
     const v = r.createVersion(p.id, { number: 'delete-me', status: 'planned', releasedAt: null, notes: '' })
@@ -82,7 +82,7 @@ describe('sqlite repository', () => {
 
   it('createProduct and updateProduct persist showcase_page_path', () => {
     const repo = createSqliteRepository(':memory:')
-    const created = repo.createProduct({ name: 'TestProduct', description: 'desc', productType: 'web-app', icon: '✨', status: 'developing', completionPercent: 0, userCount: 0, userCountSource: '', appUrl: null, repositoryPath: '', isPublic: false, showcasePagePath: 'data/products/test-product/showcase.html' } as any)
+    const created = repo.createProduct({ name: 'TestProduct', description: 'desc', icon: '✨', status: 'developing',  userCount: 0,  appUrl: null, repositoryPath: '', isPublic: false, showcasePagePath: 'data/products/test-product/showcase.html' } as any)
     expect(created.showcasePagePath).toBe('data/products/test-product/showcase.html')
     const updated = repo.updateProduct(String(created.id), { showcasePagePath: '' } as any)
     expect(updated.showcasePagePath).toBe('')

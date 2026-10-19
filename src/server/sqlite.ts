@@ -4,7 +4,7 @@ import { NO_RELEASED_VERSION } from '../domain/productMetrics.js'
 
 type Comments = Record<string, Record<string, string>>
 export const schemaComments: Comments = {
-  products: { id: '主键', name: '名称', normalized_name: '规范化名称', description: '描述', product_type: '类型', icon: '图标', status: '状态', status_before_archive: '归档前状态', completion_percent: '完成度', user_count: '用户数', user_count_source: '用户数来源', app_url: '应用地址', repository_path: '仓库路径', archived_at: '归档时间', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', is_public: '是否对外公开', showcase_page_path: '自定义作品页路径' },
+  products: { id: '主键', name: '名称', normalized_name: '规范化名称', description: '描述', icon: '图标', status: '状态', status_before_archive: '归档前状态', user_count: '用户数', app_url: '应用地址', repository_path: '仓库路径', archived_at: '归档时间', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', is_public: '是否对外公开', showcase_page_path: '自定义作品页路径' },
   work_items: { id: '主键', product_id: '产品ID', type: '类型', title: '标题', description: '描述', assignee: '负责人', priority: '优先级', due_date: '截止时间', status: '状态', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', deleted_at: '删除时间', deleted_by: '删除人', archive_deleted: '归档删除标识' },
   versions: { id: '主键', product_id: '产品ID', number: '版本号', status: '状态', released_at: '发布时间', notes: '备注', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', archive_deleted: '归档删除标识' },
   documents: { id: '主键', product_id: '产品ID', name: '名称', normalized_name: '规范化名称', content: '内容', created_at: '创建时间', updated_at: '更新时间', is_deleted: '删除标识', archive_deleted: '归档删除标识' }
@@ -25,7 +25,7 @@ const workTypeCode: Record<string, number> = { requirement: 0, bug: 1 }
 const priorityCode: Record<string, number> = { low: 0, medium: 1, high: 2, urgent: 3 }
 const workStatusCode: Record<string, number> = { todo: 0, in_progress: 1, done: 2 }
 const bump = (old: string) => { const n = Date.parse(old); const t = Date.now(); return new Date(Math.max(t, Number.isNaN(n) ? t : n + 1)).toISOString() }
-const mapProduct = (r: any): Product => ({ id: String(r.id), name: r.name, description: r.description, productType: r.product_type, icon: r.icon, status: ['developing','beta','released','archived'][r.status] as ProductStatus, completionPercent: r.completion_percent, userCount: r.user_count, userCountSource: r.user_count_source, appUrl: r.app_url || null, repositoryPath: r.repository_path, archivedAt: r.archived_at || null, isPublic: r.is_public === 1, showcasePagePath: r.showcase_page_path || '', createdAt: r.created_at, updatedAt: r.updated_at, isDeleted: Boolean(r.is_deleted) })
+const mapProduct = (r: any): Product => ({ id: String(r.id), name: r.name, description: r.description, icon: r.icon, status: ['developing','beta','released','archived'][r.status] as ProductStatus, userCount: r.user_count, appUrl: r.app_url || null, repositoryPath: r.repository_path, archivedAt: r.archived_at || null, isPublic: r.is_public === 1, showcasePagePath: r.showcase_page_path || '', createdAt: r.created_at, updatedAt: r.updated_at, isDeleted: Boolean(r.is_deleted) })
 const mapWork = (r: any): WorkItem => ({ id: String(r.id), productId: String(r.product_id), type: ['requirement','bug'][r.type] as WorkItemType, title: r.title, description: r.description ?? '', assignee: r.assignee ?? '', priority: ['low','medium','high','urgent'][r.priority] as Priority, dueDate: r.due_date || null, status: ['todo','in_progress','done'][r.status] as WorkItemStatus, createdAt: r.created_at, updatedAt: r.updated_at, isDeleted: Boolean(r.is_deleted), deletedAt: r.deleted_at || null, deletedBy: r.deleted_by ?? '' })
 const mapVersion = (r: any): ProductVersion => ({ id: String(r.id), productId: String(r.product_id), number: r.number, status: ['planned','released'][r.status] as VersionStatus, releasedAt: r.released_at || null, notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at })
 const mapPublicProduct = (r: any): PublicProduct => ({ id: String(r.id), name: r.name, description: r.description, icon: r.icon, status: ['developing','beta','released','archived'][r.status] as ProductStatus, currentVersion: r.current_version ?? NO_RELEASED_VERSION, userCount: r.user_count, appUrl: r.app_url || null, updatedAt: r.updated_at, showcasePagePath: r.showcase_page_path ?? '' })
@@ -44,18 +44,12 @@ name TEXT NOT NULL DEFAULT '',
 normalized_name TEXT NOT NULL DEFAULT '',
 -- 字段: 描述
 description TEXT NOT NULL DEFAULT '',
--- 字段: 类型
-product_type TEXT NOT NULL DEFAULT '',
 -- 字段: 图标
 icon TEXT NOT NULL DEFAULT '',
 -- 字段: 状态
 status INTEGER NOT NULL DEFAULT 0,
--- 字段: 完成度
-completion_percent INTEGER NOT NULL DEFAULT 0,
 -- 字段: 用户数
 user_count INTEGER NOT NULL DEFAULT 0,
--- 字段: 用户数来源
-user_count_source TEXT NOT NULL DEFAULT '',
 -- 字段: 应用地址
 app_url TEXT NOT NULL DEFAULT '',
 -- 字段: 仓库路径
@@ -188,6 +182,38 @@ created_at TEXT NOT NULL DEFAULT '',
 FOREIGN KEY(work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_wie_item ON work_item_events(work_item_id, created_at);`)
+
+  // products 表迁移：移除已被产品表单淘汰的 product_type / completion_percent /
+  // user_count_source 三列（完成度改为按任务自动推导）。SQLite 不能直接 DROP COLUMN，
+  // 因此重建表并复制数据。已迁移过的库不会重复执行。
+  const productColumns = db.prepare('PRAGMA table_info(products)').all() as { name: string }[]
+  const hasLegacyProductColumns = productColumns.some((column) =>
+    column.name === 'product_type' || column.name === 'completion_percent' || column.name === 'user_count_source',
+  )
+  if (hasLegacyProductColumns) {
+    db.exec(`
+CREATE TABLE products_migrated (
+id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL DEFAULT 0,
+name TEXT NOT NULL DEFAULT '',
+normalized_name TEXT NOT NULL DEFAULT '',
+description TEXT NOT NULL DEFAULT '',
+icon TEXT NOT NULL DEFAULT '',
+status INTEGER NOT NULL DEFAULT 0,
+user_count INTEGER NOT NULL DEFAULT 0,
+app_url TEXT NOT NULL DEFAULT '',
+repository_path TEXT NOT NULL DEFAULT '',
+archived_at TEXT NOT NULL DEFAULT '',
+status_before_archive INTEGER NOT NULL DEFAULT 0,
+created_at TEXT NOT NULL DEFAULT '',
+updated_at TEXT NOT NULL DEFAULT '',
+is_deleted INTEGER NOT NULL DEFAULT 0,
+is_public INTEGER NOT NULL DEFAULT 0,
+showcase_page_path TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO products_migrated SELECT id,name,normalized_name,description,icon,status,user_count,app_url,repository_path,archived_at,status_before_archive,created_at,updated_at,is_deleted,is_public,showcase_page_path FROM products;
+DROP TABLE products;
+ALTER TABLE products_migrated RENAME TO products;`)
+  }
   const getProduct = (id: string) => { const r = db.prepare('SELECT * FROM products WHERE id=? AND is_deleted=0').get(Number(id)); return r ? mapProduct(r) : undefined }
   const ensureName = (name: string) => { if (typeof name !== 'string' || !normalized(name)) throw new RepositoryError('VALIDATION_FAILED', 'name') }
   const ensureProductStatus = (status: string) => { if (statusCode[status] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'status') }
@@ -203,8 +229,8 @@ CREATE INDEX IF NOT EXISTS idx_wie_item ON work_item_events(work_item_id, create
   const repository: SqliteRepository = {
     listProducts(includeArchived = true) { const rows = db.prepare(`SELECT * FROM products WHERE is_deleted=0 ${includeArchived ? '' : 'AND status!=3'}`).all(); return rows.map(mapProduct) },
     getProduct,
-    createProduct(i) { ensureName(i.name); ensureProductStatus(i.status); if (typeof i.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); const t = now(); try { const x = db.prepare('INSERT INTO products(name,normalized_name,description,product_type,icon,status,completion_percent,user_count,user_count_source,app_url,repository_path,archived_at,created_at,updated_at,is_public,showcase_page_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(i.name, normalized(i.name), i.description, i.productType, i.icon, statusCode[i.status], i.completionPercent, i.userCount, i.userCountSource, i.appUrl ?? '', i.repositoryPath ?? '', i.archivedAt ?? '', t, t, i.isPublic ? 1 : 0, i.showcasePagePath ?? ''); return getProduct(String(x.lastInsertRowid))! } catch (e) { throw mapMutationError(e, 'product') } },
-    updateProduct(id, i, expected) { const p = getProduct(id); if (!p) throw new RepositoryError('NOT_FOUND', 'product'); if (expected && p.updatedAt !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); const n = { ...p, ...i }; ensureName(n.name); ensureProductStatus(n.status); if (typeof n.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); if (statusCode[n.status] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'status'); const updatedAt = bump(p.updatedAt); try { db.prepare('UPDATE products SET name=?,normalized_name=?,description=?,product_type=?,icon=?,status=?,completion_percent=?,user_count=?,user_count_source=?,app_url=?,repository_path=?,archived_at=?,updated_at=?,is_public=?,showcase_page_path=? WHERE id=? AND is_deleted=0').run(n.name, normalized(n.name), n.description, n.productType, n.icon, statusCode[n.status], n.completionPercent, n.userCount, n.userCountSource, n.appUrl ?? '', n.repositoryPath ?? '', n.archivedAt ?? '', updatedAt, n.isPublic ? 1 : 0, n.showcasePagePath ?? '', Number(id)) } catch (e) { throw mapMutationError(e, 'product') } return getProduct(id)! },
+    createProduct(i) { ensureName(i.name); ensureProductStatus(i.status); if (typeof i.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); const t = now(); try { const x = db.prepare('INSERT INTO products(name,normalized_name,description,icon,status,user_count,app_url,repository_path,archived_at,created_at,updated_at,is_public,showcase_page_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(i.name, normalized(i.name), i.description, i.icon, statusCode[i.status], i.userCount, i.appUrl ?? '', i.repositoryPath ?? '', i.archivedAt ?? '', t, t, i.isPublic ? 1 : 0, i.showcasePagePath ?? ''); return getProduct(String(x.lastInsertRowid))! } catch (e) { throw mapMutationError(e, 'product') } },
+    updateProduct(id, i, expected) { const p = getProduct(id); if (!p) throw new RepositoryError('NOT_FOUND', 'product'); if (expected && p.updatedAt !== expected) throw new RepositoryError('CONFLICT', 'updatedAt'); const n = { ...p, ...i }; ensureName(n.name); ensureProductStatus(n.status); if (typeof n.repositoryPath !== 'string') throw new RepositoryError('VALIDATION_FAILED', 'repositoryPath'); if (statusCode[n.status] === undefined) throw new RepositoryError('VALIDATION_FAILED', 'status'); const updatedAt = bump(p.updatedAt); try { db.prepare('UPDATE products SET name=?,normalized_name=?,description=?,icon=?,status=?,user_count=?,app_url=?,repository_path=?,archived_at=?,updated_at=?,is_public=?,showcase_page_path=? WHERE id=? AND is_deleted=0').run(n.name, normalized(n.name), n.description, n.icon, statusCode[n.status], n.userCount, n.appUrl ?? '', n.repositoryPath ?? '', n.archivedAt ?? '', updatedAt, n.isPublic ? 1 : 0, n.showcasePagePath ?? '', Number(id)) } catch (e) { throw mapMutationError(e, 'product') } return getProduct(id)! },
     archiveProduct(id, e) { return db.transaction(() => { const p=getProduct(id); if(!p) throw new RepositoryError('NOT_FOUND','product'); if(p.status==='archived') throw new RepositoryError('CONFLICT','already archived'); if(e&&p.updatedAt!==e) throw new RepositoryError('CONFLICT','updatedAt'); const t=now(); db.prepare('UPDATE products SET status_before_archive=status,status=3,archived_at=?,updated_at=? WHERE id=?').run(t,t,Number(id)); for(const table of ['work_items','versions','documents']) { db.prepare(`UPDATE ${table} SET is_deleted=1,archive_deleted=1 WHERE product_id=? AND is_deleted=0`).run(Number(id)) } return getProduct(id)! })() }, restoreProduct(id, e) { return db.transaction(() => { const p=getProduct(id); if(!p) throw new RepositoryError('NOT_FOUND','product'); if(p.status!=='archived') throw new RepositoryError('CONFLICT','not archived'); if(e&&p.updatedAt!==e) throw new RepositoryError('CONFLICT','updatedAt'); const row=db.prepare('SELECT status_before_archive FROM products WHERE id=?').get(Number(id)) as any; const status=row?.status_before_archive===1||row?.status_before_archive===2?row.status_before_archive:0; const t=now(); db.prepare('UPDATE products SET status=?,archived_at="",updated_at=? WHERE id=?').run(status,t,Number(id)); for(const table of ['work_items','versions','documents']) { db.prepare(`UPDATE ${table} SET is_deleted=0,archive_deleted=0 WHERE product_id=? AND archive_deleted=1`).run(Number(id)) } return getProduct(id)! })() },
 listWorkItems: (pid: string, opts?: { includeDeleted?: boolean; onlyDeleted?: boolean }) => {
   const includeDeleted = opts?.includeDeleted ?? false
@@ -316,7 +342,7 @@ deleteWorkItem(id) { if (!db.prepare('UPDATE work_items SET is_deleted=1 WHERE i
   const count = (db.prepare('SELECT count(*) AS c FROM products').get() as any).c
   if (!count) {
     console.warn('[vibe-studio] database is empty — seeding 3 demo products. To preserve your data across restarts, never delete data/vibe-studio.sqlite manually.')
-    for (const p of [{ name: 'Flora', productType: 'mobile-app', icon: '🌿', status: 'beta', completionPercent: 78, userCount: 2640, isPublic: true, showcasePagePath: 'data/products/1/showcase.html' }, { name: 'ResumeGenius', productType: 'web-app', icon: '📄', status: 'developing', completionPercent: 62, userCount: 890 }, { name: 'Text War', productType: 'game', icon: '⚔️', status: 'released', completionPercent: 100, userCount: 12400 }]) repository.createProduct({ ...p, description: '', userCountSource: '', appUrl: null, repositoryPath: '' } as ProductInput)
+    for (const p of [{ name: 'Flora', icon: '🌿', status: 'beta', userCount: 2640, isPublic: true, showcasePagePath: 'data/products/1/showcase.html' }, { name: 'ResumeGenius', icon: '📄', status: 'developing', userCount: 890 }, { name: 'Text War', icon: '⚔️', status: 'released', userCount: 12400 }]) repository.createProduct({ ...p, description: '', appUrl: null, repositoryPath: '' } as ProductInput)
   }
   return repository
 }

@@ -13,7 +13,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 const makeRepo = () => {
   const r = createSqliteRepository(path.join(dir, 'db.sqlite'))
-  r.createProduct({ name: 'P1', description: '', productType: '', icon: '', status: 'developing', completionPercent: 0, userCount: 0, userCountSource: '', appUrl: null, repositoryPath: '' })
+  r.createProduct({ name: 'P1', description: '', icon: '', status: 'developing', userCount: 0, appUrl: null, repositoryPath: '' })
   return r
 }
 

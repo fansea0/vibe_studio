@@ -133,11 +133,11 @@ data/                   # SQLite 文件目录（gitignore）
 
 ```ts
 Product {
-  id, name, description, productType, icon,
+  id, name, description, icon,
   status: ProductStatus,
-  completionPercent: 0..100, userCount, userCountSource,
-  appUrl: string | null, repositoryPath: string,
+  userCount, appUrl: string | null, repositoryPath: string,
   isDeleted?, archivedAt: string | null,
+  isPublic?, showcasePagePath?,
   createdAt: ISO, updatedAt: ISO
 }
 
@@ -150,7 +150,7 @@ CommitSummary { sha, shortSha, author, committedAt, subject }
 ### 衍生度量（`domain/productMetrics.ts`）
 
 ```
-completionPercent = product.completionPercent
+completionPercent = round(done 任务数 / 全部任务数 * 100)，无任务时为 0
 userCount         = product.userCount
 openRequirementCount = count(requirement & status != done)
 openBugCount         = count(bug & status != done)
@@ -379,12 +379,12 @@ test: { environment: 'jsdom', setupFiles: './src/test/setup.ts' }
 
 - `ProductFormValues`：所有字段都是 string，便于表单绑定。
 - `getSafeHttpsUrl(value)`：仅放行 `https://` 且 hostname 非空，否则 null。
-- `productToFormValues(product?)`：Product → Form，默认 `productType='web-app'`、`icon='✨'`、`status='developing'`。
+- `productToFormValues(product?)`：Product → Form，默认 `icon='✨'`、`status='developing'`。
 - `validateProductValues(values, products, currentProductId?)`：
   - `name` 唯一性（非大小写敏感，trim 后）
-  - `completionPercent` 0..100 整数
   - `userCount` ≥ 0 整数
   - `appUrl` 必须 HTTPS
+- 表单只暴露必填与高频字段；`repositoryPath`、`isPublic`、`showcasePagePath` 收在「高级设置」折叠区，由 `ProductFields` 的 `advancedOpen` 控制。
 - `mergeProductValues(product, values, timestamp)`：icon 兜底 `'✨'`；空 `appUrl` → null。
 - `createProductId(name, products)`：kebab-case NFKD slug，冲突追加 `-2` `-3`，兜底 `product-${Date.now()}`。
 
@@ -477,6 +477,21 @@ tests/
 - SQLite 文件位于 `data/vibe-studio.sqlite`，已被 `.gitignore` 忽略；首次启动空库，**不会**迁移旧 `localStorage`。
 - Markdown 文件限制：`.md`/`.markdown`、单文件 ≤ 512 KiB；生产环境大文件请用服务端存储。
 - Git 路径必须为绝对路径；Git 失败只显示提示，不阻塞产品/任务/文档。
+- **Vite 监听配置**：`server.watch.ignored` 排除了 `data/` 下的 SQLite 文件。数据库每次写入都会产生文件变更，
+  若被监听到会触发整页 reload 并打断进行中的 API 请求（表现为产品列表一直为空）。
+  作品页 HTML 未被排除，仍可正常通过 `/data/products/<id>/showcase.html` 访问。
+
+## 13.1 响应式断点（`src/styles/*.css`）
+
+| 断点 | 布局变化 |
+|---|---|
+| `> 1180px` | 宽屏：概览页两栏（摘要+指标 \| Git 记录，后者 sticky）、指标卡横排、设置表单限宽 860px |
+| `≤ 1180px` | 常规桌面：单栏概览、产品网格按 `auto-fit` 自适应列数 |
+| `≤ 980px` | 侧栏收窄至 200px，产品网格降为 2 列 |
+| `≤ 720px` | 移动端：侧栏收为顶部条、全部单列、表单标题行保持横向 |
+
+网格统一用 `repeat(auto-fit, minmax(min(Xpx, 100%), 1fr))`：`auto-fit` 让末尾空轨道塌缩（产品少时不留空列），
+`min()` 兜底避免窄屏横向溢出。
 
 ---
 

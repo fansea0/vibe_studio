@@ -45,7 +45,7 @@ export function TaskCard({ item, onSaveStatus, onOpenDetail, onEdit, onDelete }:
       {item.description && <p className="task-card-snippet">{item.description.slice(0, 80)}{item.description.length > 80 ? '…' : ''}</p>}
       <div className="task-card-footer">
         <label className="status-select" onClick={(e) => e.stopPropagation()}>
-          <span>状态</span>
+          <span className="visually-hidden">状态</span>
           <select aria-label={`${item.title} 状态`} value={item.status} onChange={(e) => onSaveStatus(item, e.target.value as WorkItemStatus)}>
             {workItemStatuses.map((s) => <option key={s} value={s}>{workItemStatusLabels[s]}</option>)}
           </select>

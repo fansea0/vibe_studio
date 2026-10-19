@@ -97,32 +97,27 @@ describe('product workspace', () => {
 
     await user.click(screen.getByRole('button', { name: '新建产品' }))
     await user.type(screen.getByLabelText('产品名称'), 'Empty Metrics')
-    await user.clear(screen.getByLabelText('完成度'))
     await user.clear(screen.getByLabelText('用户数'))
     await user.click(screen.getByRole('button', { name: '创建产品' }))
 
     expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(
-      expect.arrayContaining(['请输入完成度', '请输入用户数']),
+      expect.arrayContaining(['请输入用户数']),
     )
     expect(repository.listProducts().some(({ name }) => name === 'Empty Metrics')).toBe(false)
   })
 
-  it('updates user count and source in settings and reflects it on overview', async () => {
+  it('updates user count in settings and reflects it on overview', async () => {
     const user = userEvent.setup()
     renderApp('/products/flora/settings')
 
     const userCount = screen.getByLabelText('用户数')
     await user.clear(userCount)
     await user.type(userCount, '3000')
-    const source = screen.getByLabelText('用户数来源')
-    await user.clear(source)
-    await user.type(source, 'billing records')
     await user.click(screen.getByRole('button', { name: '保存设置' }))
 
     expect(screen.getByRole('status')).toHaveTextContent('设置已保存')
     await user.click(screen.getByRole('link', { name: '概览' }))
     expect(screen.getByText('3,000')).toBeInTheDocument()
-    expect(screen.getByText('billing records')).toBeInTheDocument()
   })
 
   it('rejects empty numeric fields in settings and preserves stored values', async () => {
@@ -131,12 +126,11 @@ describe('product workspace', () => {
     const user = userEvent.setup()
     renderApp('/products/flora/settings', repository)
 
-    await user.clear(screen.getByLabelText('完成度'))
     await user.clear(screen.getByLabelText('用户数'))
     await user.click(screen.getByRole('button', { name: '保存设置' }))
 
     expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(
-      expect.arrayContaining(['请输入完成度', '请输入用户数']),
+      expect.arrayContaining(['请输入用户数']),
     )
     expect(repository.listProducts().find(({ id }) => id === 'flora')).toEqual(original)
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -314,16 +308,16 @@ describe('product workspace', () => {
     const repository = createStudioRepository(localStorage)
     const user = userEvent.setup()
     renderApp('/products/flora/settings', repository)
-    await user.clear(screen.getByLabelText('完成度'))
+    await user.clear(screen.getByLabelText('用户数'))
     await user.click(screen.getByRole('button', { name: '保存设置' }))
-    expect(screen.getByText('请输入完成度')).toBeInTheDocument()
+    expect(screen.getByText('请输入用户数')).toBeInTheDocument()
     const flora = repository.listProducts().find(({ id }) => id === 'flora')!
 
     await repository.saveProduct({ ...flora, name: 'Flora External', updatedAt: '2026-07-13T10:00:00.000Z' }, { expectedUpdatedAt: flora.updatedAt })
     window.dispatchEvent(new StorageEvent('storage', { key: 'vibe-studio:v1' }))
     await user.click(await screen.findByRole('button', { name: '加载外部版本' }))
 
-    expect(screen.queryByText('请输入完成度')).not.toBeInTheDocument()
+    expect(screen.queryByText('请输入用户数')).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -394,17 +388,6 @@ describe('product workspace', () => {
     renderApp('/products/flora', repository)
 
     expect(screen.queryByRole('link', { name: /访问应用/ })).not.toBeInTheDocument()
-  })
-
-  it('keeps data and operations disabled and non-navigable', async () => {
-    const user = userEvent.setup()
-    renderApp()
-
-    const disabledItem = screen.getByText('数据与运营（即将推出）')
-    expect(disabledItem).toHaveAttribute('aria-disabled', 'true')
-    expect(disabledItem.closest('a')).toBeNull()
-    await user.click(disabledItem)
-    expect(screen.getByRole('heading', { name: '产品总览' })).toBeInTheDocument()
   })
 
   it('shows repository persistence errors without reporting success', async () => {

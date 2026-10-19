@@ -3,12 +3,9 @@ import type { Product, ProductStatus } from '../domain/models'
 export interface ProductFormValues {
   name: string
   description: string
-  productType: string
   icon: string
   status: ProductStatus
-  completionPercent: string
   userCount: string
-  userCountSource: string
   appUrl: string
   repositoryPath: string
   isPublic: boolean
@@ -30,12 +27,9 @@ export const getSafeHttpsUrl = (value: string | null): string | null => {
 export const productToFormValues = (product?: Product): ProductFormValues => ({
   name: product?.name ?? '',
   description: product?.description ?? '',
-  productType: product?.productType ?? 'web-app',
   icon: product?.icon ?? '✨',
   status: product?.status ?? 'developing',
-  completionPercent: String(product?.completionPercent ?? 0),
   userCount: String(product?.userCount ?? 0),
-  userCountSource: product?.userCountSource ?? '',
   appUrl: product?.appUrl ?? '',
   repositoryPath: product?.repositoryPath ?? '',
   isPublic: product?.isPublic ?? false,
@@ -60,12 +54,6 @@ export const validateProductValues = (
     errors.name = '产品名称已存在'
   }
 
-  const completionText = values.completionPercent.trim()
-  const completion = Number(completionText)
-  if (completionText === '') errors.completionPercent = '请输入完成度'
-  else if (!Number.isInteger(completion) || completion < 0 || completion > 100) {
-    errors.completionPercent = '完成度必须是 0 到 100 的整数'
-  }
   const userCountText = values.userCount.trim()
   const users = Number(userCountText)
   if (userCountText === '') errors.userCount = '请输入用户数'
@@ -87,12 +75,9 @@ export const mergeProductValues = (
   ...product,
   name: values.name.trim(),
   description: values.description.trim(),
-  productType: values.productType.trim(),
   icon: values.icon.trim() || '✨',
   status: values.status,
-  completionPercent: Number(values.completionPercent),
   userCount: Number(values.userCount),
-  userCountSource: values.userCountSource.trim(),
   appUrl: values.appUrl.trim() || null,
   repositoryPath: values.repositoryPath.trim(),
   isPublic: values.isPublic,

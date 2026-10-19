@@ -17,9 +17,11 @@ export const deriveProductMetrics = (
 ): ProductMetrics => {
   const productItems = items.filter((item) => item.productId === product.id)
   const productVersions = versions.filter((version) => version.productId === product.id)
+  const doneCount = productItems.filter((item) => item.status === 'done').length
 
   return {
-    completionPercent: product.completionPercent,
+    // 完成度由任务板自动推导，不再要求用户手动维护一个百分比。
+    completionPercent: productItems.length === 0 ? 0 : Math.round((doneCount / productItems.length) * 100),
     userCount: product.userCount,
     openRequirementCount: productItems.filter(
       (item) => item.type === 'requirement' && item.status !== 'done',

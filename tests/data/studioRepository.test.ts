@@ -14,12 +14,9 @@ const product: Product = {
   id: 'test-product',
   name: 'Test Product',
   description: 'Repository fixture',
-  productType: 'web-app',
   icon: '🧪',
   status: 'beta',
-  completionPercent: 50,
   userCount: 42,
-  userCountSource: 'test',
   appUrl: null,
   repositoryPath: '',
   archivedAt: null,
@@ -523,9 +520,6 @@ describe('createStudioRepository', () => {
   })
 
   it.each([
-    ['completion below zero', { completionPercent: -1 }],
-    ['completion above one hundred', { completionPercent: 101 }],
-    ['fractional completion', { completionPercent: 50.5 }],
     ['negative user count', { userCount: -1 }],
     ['fractional user count', { userCount: 1.5 }],
   ])('drops a product with invalid %s', (_case, override) => {
@@ -542,9 +536,9 @@ describe('createStudioRepository', () => {
     expect(createStudioRepository(localStorage).listProducts()).toEqual([])
   })
 
-  it('keeps completion and user count boundary values', () => {
-    const zeroProduct = { ...product, id: 'zero', completionPercent: 0, userCount: 0 }
-    const completeProduct = { ...product, id: 'complete', completionPercent: 100 }
+  it('keeps user count boundary values', () => {
+    const zeroProduct = { ...product, id: 'zero', userCount: 0 }
+    const completeProduct = { ...product, id: 'complete', userCount: 100 }
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -628,7 +622,6 @@ describe('createStudioRepository', () => {
   })
 
   it.each([
-    ['completionPercent', { completionPercent: 101 }],
     ['userCount', { userCount: -1 }],
   ])('rejects invalid saveProduct %s without writing or changing the snapshot', async (_field, patch) => {
     const storage = new FaultyStorage()
@@ -688,7 +681,7 @@ describe('createStudioRepository', () => {
     const repository = createStudioRepository(storage)
     repository.listProducts()
 
-    await expect(repository.saveProduct({ ...product, completionPercent: 101 }, { expectedUpdatedAt: null })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(repository.saveProduct({ ...product, userCount: -1 }, { expectedUpdatedAt: null })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
 
     await repository.saveProduct(product, { expectedUpdatedAt: null })
     await repository.saveWorkItem(workItem('valid-after-rejection', product.id))

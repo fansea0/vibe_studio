@@ -12,7 +12,7 @@ let handler: ReturnType<typeof createApiHandler>
 beforeEach(() => {
   dir = mkdtempSync(path.join(tmpdir(), 'vibe-api-'))
   const repo = createSqliteRepository(path.join(dir, 'db.sqlite'))
-  repo.createProduct({ name: 'P', description: '', productType: '', icon: '', status: 'developing', completionPercent: 0, userCount: 0, userCountSource: '', appUrl: null, repositoryPath: '' })
+  repo.createProduct({ name: 'P', description: '', icon: '', status: 'developing', userCount: 0, appUrl: null, repositoryPath: '' })
   handler = createApiHandler({ repository: repo })
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))

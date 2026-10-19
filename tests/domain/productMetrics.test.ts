@@ -7,12 +7,9 @@ const product: Product = {
   id: 'flora',
   name: 'Flora',
   description: 'Plant care companion',
-  productType: 'mobile-app',
   icon: '🌿',
   status: 'developing',
-  completionPercent: 72,
   userCount: 1280,
-  userCountSource: 'analytics',
   appUrl: 'https://flora.example.com',
   repositoryPath: '',
   archivedAt: null,
@@ -82,8 +79,21 @@ describe('deriveProductMetrics', () => {
     ])
 
     expect(metrics.currentVersion).toBe('1.1.0')
-    expect(metrics.completionPercent).toBe(72)
     expect(metrics.userCount).toBe(1280)
+  })
+
+  it('derives completion from the task board instead of a manual value', () => {
+    const metrics = deriveProductMetrics(product, [
+      item('r1', 'flora', 'requirement', 'done'),
+      item('r2', 'flora', 'requirement', 'todo'),
+      item('b1', 'flora', 'bug', 'done'),
+    ], [])
+
+    expect(metrics.completionPercent).toBe(67)
+  })
+
+  it('reports zero completion when the product has no tasks', () => {
+    expect(deriveProductMetrics(product, [], []).completionPercent).toBe(0)
   })
 
   it('uses updatedAt to break ties when releasedAt is unavailable', () => {

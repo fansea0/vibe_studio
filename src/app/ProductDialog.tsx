@@ -18,6 +18,7 @@ export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: P
   const [errors, setErrors] = useState({})
   const [failure, setFailure] = useState('')
   const [busy, setBusy] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -27,8 +28,8 @@ export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: P
     if (Object.keys(nextErrors).length > 0) return
     const now = new Date().toISOString()
     const base: Product = {
-      id: createProductId(values.name, products), name: '', description: '', productType: '', icon: '',
-      status: 'developing', completionPercent: 0, userCount: 0, userCountSource: '', appUrl: null,
+      id: createProductId(values.name, products), name: '', description: '', icon: '',
+      status: 'developing', userCount: 0, appUrl: null,
       archivedAt: null, repositoryPath: '', isPublic: false, createdAt: now, updatedAt: now,
     }
     const product = mergeProductValues(base, values, now)
@@ -46,7 +47,7 @@ export function ProductDialog({ products, onSaveProduct, onClose, onCreated }: P
   return (
     <Modal title="新建产品" onClose={onClose} closeDisabled={busy}>
       <form onSubmit={submit} noValidate>
-        <ProductFields values={values} errors={errors} onChange={setValues} />
+        <ProductFields values={values} errors={errors} onChange={setValues} advancedOpen={advancedOpen} onAdvancedToggle={setAdvancedOpen} />
         {failure && <p role="alert" className="feedback error">{failure}</p>}
         <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>取消</button><button type="submit" disabled={busy}>创建产品</button></div>
       </form>

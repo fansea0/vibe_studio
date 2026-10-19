@@ -1,3 +1,4 @@
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 
@@ -7,16 +8,20 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 const okJson = (data: unknown, status = 200) => Promise.resolve({ ok: status === 200, status, json: async () => ({ data }) } as Response)
 
-describe('ShowcaseApp routing', () => {
+async function renderShowcase(path: string) {
+  const { ShowcaseRoutes } = await import('../../src/app/showcase/ShowcaseRoutes')
+  render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/showcase/*" element={<ShowcaseRoutes />} /></Routes></MemoryRouter>)
+}
+
+describe('showcase routing', () => {
   it('renders Hero on /showcase with profile data', async () => {
     fetchMock.mockImplementation((url: string | URL) => {
       const u = String(url)
-      if (u.endsWith('/api/showcase/profile')) return okJson({ displayName: 'Ada', tagline: 'hi', avatarUrl: null, statusLine: 'now', statusPillText: 'open', aboutParagraphs: [], contactEmail: 'a@b.c', socialLinks: [] })
+      if (u.endsWith('/api/showcase/profile')) return okJson({ displayName: 'Ada', tagline: 'hi', statusLine: 'now', statusPillText: 'open', aboutParagraphs: [], contactEmail: 'a@b.c', socialLinks: [] })
       if (u.endsWith('/api/showcase/products')) return okJson([])
       return okJson({})
     })
-    const { ShowcaseApp } = await import('../../src/app/showcase/ShowcaseApp')
-    render(<ShowcaseApp initialEntries={['/showcase']} />)
+    await renderShowcase('/showcase')
     await waitFor(() => expect(screen.getByText('Ada')).toBeInTheDocument())
     expect(screen.getByText('hi')).toBeInTheDocument()
   })
@@ -27,8 +32,7 @@ describe('ShowcaseApp routing', () => {
       if (u.includes('/api/showcase/products/')) return okJson({}, 404)
       return okJson({})
     })
-    const { ShowcaseApp } = await import('../../src/app/showcase/ShowcaseApp')
-    render(<ShowcaseApp initialEntries={['/showcase/missing-id']} />)
+    await renderShowcase('/showcase/missing-id')
     await waitFor(() => expect(screen.getByText(/作品未公开或不存在/)).toBeInTheDocument())
   })
 
@@ -39,8 +43,7 @@ describe('ShowcaseApp routing', () => {
       if (u.includes('/api/products/') && u.includes('/commits')) return okJson({ items: [], checkedAt: '2026-01-01' })
       return okJson({})
     })
-    const { ShowcaseApp } = await import('../../src/app/showcase/ShowcaseApp')
-    render(<ShowcaseApp initialEntries={['/showcase/p1']} />)
+    await renderShowcase('/showcase/p1')
     await waitFor(() => expect(screen.getAllByText('Flora').length).toBeGreaterThan(0))
     expect(screen.getByText('A plant app')).toBeInTheDocument()
   })

@@ -22,6 +22,7 @@ export function ProductSettings({ product, products, onSaveProduct, onArchivePro
   const [dirty, setDirty] = useState(false)
   const [externalProduct, setExternalProduct] = useState<Product | null>(null)
   const [busy, setBusy] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const latestProduct = useRef(product)
   latestProduct.current = product
   const loadedVersion = useRef({ id: product.id, updatedAt: product.updatedAt })
@@ -99,7 +100,7 @@ export function ProductSettings({ product, products, onSaveProduct, onArchivePro
     <section className="settings-stack" aria-labelledby="product-settings-title">
       <form className="overview-card settings-form" onSubmit={save} noValidate>
         <div className="section-heading"><div><h2 id="product-settings-title">产品设置</h2><p>维护展示信息、状态和数据口径。</p></div><button type="submit" disabled={busy}>保存设置</button></div>
-        <ProductFields values={values} errors={errors} onChange={changeValues} />
+        <ProductFields values={values} errors={errors} onChange={changeValues} advancedOpen={advancedOpen} onAdvancedToggle={setAdvancedOpen} />
         {externalProduct && <div role="alert" className="feedback warning conflict-feedback"><span>当前产品已在其他窗口更新。你的草稿已保留。</span><button type="button" className="secondary" onClick={loadExternalVersion}>加载外部版本</button></div>}
         {feedback && <p role={feedback.type === 'success' ? 'status' : 'alert'} className={`feedback ${feedback.type}`}>{feedback.text}</p>}
       </form>

@@ -31,20 +31,24 @@ interface ProductDetailProps {
   onLoadComments: (item: WorkItem) => Promise<void>
   onLoadEvents: (item: WorkItem) => Promise<void>
   onCreateComment: (item: WorkItem, body: { author: string; body: string }) => Promise<void>
+  loading?: boolean
 }
 const tabs = [
   { id: 'overview', label: '概览' }, { id: 'tasks', label: '任务' }, { id: 'versions', label: '版本' },
   { id: 'documents', label: '文档' }, { id: 'settings', label: '设置' },
 ] as const
 
-export function ProductDetail({ products, workItems, trashWorkItems, versions, documents, comments, events, onSaveProduct, onSaveWorkItem, onSaveVersion, onSaveDocument, onArchiveProduct, onRestoreProduct, onDeleteWorkItem, onRestoreWorkItem, onPurgeWorkItem, onLoadComments, onLoadEvents, onCreateComment }: ProductDetailProps) {
+export function ProductDetail({ products, workItems, trashWorkItems, versions, documents, comments, events, onSaveProduct, onSaveWorkItem, onSaveVersion, onSaveDocument, onArchiveProduct, onRestoreProduct, onDeleteWorkItem, onRestoreWorkItem, onPurgeWorkItem, onLoadComments, onLoadEvents, onCreateComment, loading = false }: ProductDetailProps) {
   const { productId = '', tab } = useParams()
   const navigate = useNavigate()
   const [restoreError, setRestoreError] = useState('')
   const [restoreBusy, setRestoreBusy] = useState(false)
   const [detailItem, setDetailItem] = useState<WorkItem | null>(null)
   const product = products.find(({ id }) => id === productId)
-  if (!product) return <StateCard title="产品不存在" text="未找到对应产品，它可能已被移除或链接有误。" />
+  // 快照仍在加载时不要判定为「产品不存在」，否则直达深链会先闪一下错误页。
+  if (!product) return loading
+    ? <StateCard title="正在加载产品" text="正在读取产品数据，请稍候。" />
+    : <StateCard title="产品不存在" text="未找到对应产品，它可能已被移除或链接有误。" />
   const productWorkItems = workItems.filter(({ productId: ownerId }) => ownerId === product.id)
   const productTrash = trashWorkItems.filter(({ productId: ownerId }) => ownerId === product.id)
   if (product.archivedAt !== null) {
@@ -69,7 +73,7 @@ export function ProductDetail({ products, workItems, trashWorkItems, versions, d
   return (
     <>
       <nav className="breadcrumb" aria-label="面包屑"><Link to="/products">产品</Link><span>/</span><span>{product.name}</span></nav>
-      <header className="detail-heading"><div className="detail-title"><span className="hero-icon">{product.icon}</span><div><h1>{product.name}</h1><p>{product.description || '暂未填写产品描述。'}</p></div></div><div className="detail-actions">{appUrl && <a className="external-button" href={appUrl} target="_blank" rel="noopener noreferrer">访问应用 ↗</a>}{(product.isPublic || product.showcasePagePath) && <a className="external-button showcase-button" href={`/api/showcase-pages/${encodeURIComponent(product.id)}/showcase.html`} target="_blank" rel="noopener noreferrer" title="在新标签页打开产品作品集 HTML 页面（不带 Vibe Studio 外壳，等同于查看 iframe 源）">查看产品网页 ↗</a>}</div></header>
+      <header className="detail-heading"><div className="detail-title"><span className="hero-icon">{product.icon}</span><div><h1>{product.name}</h1><p>{product.description || '暂未填写产品描述。'}</p></div></div><div className="detail-actions">{appUrl && <a className="external-button" href={appUrl} target="_blank" rel="noopener noreferrer">访问应用 ↗</a>}{product.isPublic && <a className="external-button showcase-button" href={`/showcase/${encodeURIComponent(product.id)}`} target="_blank" rel="noopener noreferrer">查看作品页 ↗</a>}</div></header>
       <nav className="tabs" aria-label="产品详情">{tabs.map(({ id, label }) => <Link key={id} aria-current={activeTab === id ? 'page' : undefined} className={activeTab === id ? 'selected' : ''} to={`/products/${product.id}/${id}`}>{label}</Link>)}</nav>
       {activeTab === 'overview' && <ProductOverview product={product} metrics={metrics} />}
       {activeTab === 'tasks' && (

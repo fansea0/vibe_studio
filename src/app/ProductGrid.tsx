@@ -6,7 +6,6 @@ import { deriveProductMetrics } from '../domain/productMetrics'
 import { ProductDialog } from './ProductDialog'
 import { productStatusLabels } from './productPresentation'
 import { mutationErrorMessage } from './mutationError'
-import { useCommitPolling } from '../client/useCommitPolling'
 
 interface ProductGridProps {
   products: Product[]
@@ -51,12 +50,9 @@ export function ProductGrid({ products, workItems, versions, onSaveProduct, onRe
 }
 
 function ProductCard({ product, metrics }: { product: Product; metrics: ReturnType<typeof deriveProductMetrics> }) {
-  const { commits, loading, error } = useCommitPolling(product.id, 1)
-  const latest = commits[0]
   return <Link className="product-card" to={`/products/${product.id}`} aria-label={`${product.name}，打开产品详情`}>
     <div className="card-top"><span className="product-icon">{product.icon}</span><span className={`status status-${product.status}`}>{productStatusLabels[product.status]}</span></div>
     <h2>{product.name}</h2><p className="description">{product.description || '暂未填写产品描述。'}</p>
     <div className="card-metrics"><span><strong>{metrics.openRequirementCount}</strong> 未完成需求</span><span><strong>{metrics.openBugCount}</strong> 未关闭 Bug</span><span><strong>{metrics.userCount.toLocaleString()}</strong> 用户</span><span><strong>{metrics.currentVersion}</strong> 当前版本</span></div>
-    <footer>{loading ? '正在读取 Git 更新…' : latest ? <>最新更新：{latest.subject} <code>{latest.shortSha}</code></> : error ? error : '暂无 Git 提交记录'}</footer>
   </Link>
 }

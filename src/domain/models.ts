@@ -8,12 +8,9 @@ export interface Product {
   id: string
   name: string
   description: string
-  productType: string
   icon: string
   status: ProductStatus
-  completionPercent: number
   userCount: number
-  userCountSource: string
   appUrl: string | null
   repositoryPath: string
   isDeleted?: boolean

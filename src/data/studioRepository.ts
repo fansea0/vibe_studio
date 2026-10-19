@@ -67,17 +67,11 @@ const isProduct = (value: unknown): value is Product =>
   isNonEmptyString(value.id) &&
   isNonEmptyString(value.name) &&
   isString(value.description) &&
-  isString(value.productType) &&
   isString(value.icon) &&
   isOneOf(value.status, ['developing', 'beta', 'released', 'archived']) &&
-  isNumber(value.completionPercent) &&
-  Number.isInteger(value.completionPercent) &&
-  value.completionPercent >= 0 &&
-  value.completionPercent <= 100 &&
   isNumber(value.userCount) &&
   Number.isInteger(value.userCount) &&
   value.userCount >= 0 &&
-  isString(value.userCountSource) &&
   isNullableString(value.appUrl) &&
   isNullableIsoDate(value.archivedAt) &&
   isIsoDate(value.createdAt) &&

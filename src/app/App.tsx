@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
-import { AboutSection } from './showcase/AboutSection'
-import { ContactSection } from './showcase/ContactSection'
-import { HeroSection } from './showcase/HeroSection'
-import { NowSection } from './showcase/NowSection'
-import { ShowcaseDetailPage } from './showcase/ShowcaseDetailPage'
-import { ShowcaseShell } from './showcase/ShowcaseShell'
-import { WorksSection } from './showcase/WorksSection'
+import { ShowcaseRoutes } from './showcase/ShowcaseRoutes'
 import { createIndexedDbMutationLock, createStudioRepository, createUnavailableMutationLock, STUDIO_STORAGE_KEY, type DocumentMutationToken, type MutationLock, type ProductMutationToken, type StudioRepository } from '../data/studioRepository'
 import type { MarkdownDocument, Product, ProductVersion, WorkItem, WorkItemComment, WorkItemEvent } from '../domain/models'
 import * as api from '../client/api'
@@ -23,32 +17,31 @@ export default function App(props: AppProps) {
   // The injectable repository remains solely as a test seam. Production always uses the SQLite HTTP API.
   // Vitest renders a few legacy compatibility scenarios without injecting a repository; keep those
   // deterministic while never enabling this fallback in a production build.
-  return props.repository || import.meta.env.MODE === 'test' ? <LegacyApp {...props} /> : <TopLevel {...props} />
+  return props.repository || import.meta.env.MODE === 'test' ? <LegacyApp {...props} /> : <StudioApp {...props} />
 }
 
-function TopLevel(props: AppProps) {
+/** 走 SQLite HTTP API 的正式应用。导出以便测试覆盖真实数据通路。 */
+export function StudioApp(props: AppProps) {
   const Router = props.initialEntries ? MemoryRouter : BrowserRouter
   return <Router {...(props.initialEntries ? { initialEntries: props.initialEntries } : {})}><AppRoutes {...props} /></Router>
 }
 
 function AppRoutes(_props: AppProps) {
-  const showcase = useShowcaseProfile()
   const studio = useStudio()
   return <Routes>
-    <Route path="/showcase" element={<ShowcaseShell><ShowcaseHome profile={showcase.profile} error={showcase.error} /></ShowcaseShell>} />
-    <Route path="/showcase/:productId" element={<ShowcaseShell><ShowcaseDetailRoute productId={undefined} /></ShowcaseShell>} />
-    <Route path="/showcase/*" element={<ShowcaseShell><ShowcaseNotFound /></ShowcaseShell>} />
+    <Route path="/showcase/*" element={<ShowcaseRoutes />} />
     <Route path="/" element={<Navigate to="/products" replace />} />
     <Route path="/products" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductGrid {...studio.snapshot} {...studio.handlers} /></Workspace>} />
-    <Route path="/products/:productId/:tab?" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductDetail {...studio.snapshot} {...studio.handlers} comments={studio.comments} events={studio.events} /></Workspace>} />
+    <Route path="/products/:productId/:tab?" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductDetail {...studio.snapshot} {...studio.handlers} comments={studio.comments} events={studio.events} loading={studio.loading} /></Workspace>} />
     <Route path="*" element={<Navigate to="/products" replace />} />
   </Routes>
 }
 
-interface StudioState { snapshot: Snapshot; error: string; comments: Record<string, WorkItemComment[]>; events: Record<string, WorkItemEvent[]>; handlers: { onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void>; onDeleteWorkItem: (item: WorkItem) => Promise<void>; onRestoreWorkItem: (item: WorkItem) => Promise<void>; onPurgeWorkItem: (item: WorkItem) => Promise<void>; onLoadComments: (item: WorkItem) => Promise<void>; onLoadEvents: (item: WorkItem) => Promise<void>; onCreateComment: (item: WorkItem, body: { author: string; body: string }) => Promise<void> } }
+interface StudioState { snapshot: Snapshot; error: string; loading: boolean; comments: Record<string, WorkItemComment[]>; events: Record<string, WorkItemEvent[]>; handlers: { onSaveProduct: (p: Product, t: ProductMutationToken) => Promise<Product | void>; onSaveWorkItem: (x: WorkItem) => Promise<void>; onSaveVersion: (x: ProductVersion) => Promise<void>; onSaveDocument: (x: MarkdownDocument, t: DocumentMutationToken) => Promise<void>; onArchiveProduct: (p: Product) => Promise<void>; onRestoreProduct: (p: Product) => Promise<void>; onDeleteWorkItem: (item: WorkItem) => Promise<void>; onRestoreWorkItem: (item: WorkItem) => Promise<void>; onPurgeWorkItem: (item: WorkItem) => Promise<void>; onLoadComments: (item: WorkItem) => Promise<void>; onLoadEvents: (item: WorkItem) => Promise<void>; onCreateComment: (item: WorkItem, body: { author: string; body: string }) => Promise<void> } }
 function useStudio(): StudioState {
   const [snapshot, setSnapshot] = useState<Snapshot>(empty)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
   const refresh = useCallback(async () => {
     try {
       const snap = await api.fetchSnapshot()
@@ -57,6 +50,8 @@ function useStudio(): StudioState {
       setError('')
     } catch {
       setError('无法连接到 SQLite 服务，请稍后重试。')
+    } finally {
+      setLoading(false)
     }
   }, [])
   useEffect(() => { void refresh() }, [refresh])
@@ -91,45 +86,10 @@ function useStudio(): StudioState {
     await api.createWorkItemComment(item.productId, item.id, body)
     await loadComments(item)
   }, [loadComments])
-  return { snapshot, error, comments, events, handlers: { onSaveProduct: saveProduct, onSaveWorkItem: saveWorkItem, onSaveVersion: saveVersion, onSaveDocument: saveDocument, onArchiveProduct: archive, onRestoreProduct: restore, onDeleteWorkItem: deleteWorkItem, onRestoreWorkItem: restoreTrashWorkItem, onPurgeWorkItem: purgeTrashWorkItem, onLoadComments: loadComments, onLoadEvents: loadEvents, onCreateComment: createComment } }
+  return { snapshot, error, loading, comments, events, handlers: { onSaveProduct: saveProduct, onSaveWorkItem: saveWorkItem, onSaveVersion: saveVersion, onSaveDocument: saveDocument, onArchiveProduct: archive, onRestoreProduct: restore, onDeleteWorkItem: deleteWorkItem, onRestoreWorkItem: restoreTrashWorkItem, onPurgeWorkItem: purgeTrashWorkItem, onLoadComments: loadComments, onLoadEvents: loadEvents, onCreateComment: createComment } }
 }
 
-interface ProfileState { profile: import('../domain/models').ShowcaseProfile; error: string }
-function useShowcaseProfile(): ProfileState {
-  const [profile, setProfile] = useState<import('../domain/models').ShowcaseProfile>({ displayName: '', tagline: '', avatarUrl: null, statusLine: '', statusPillText: '', aboutParagraphs: [], contactEmail: '', socialLinks: [] })
-  const [error, setError] = useState('')
-  useEffect(() => { const c = new AbortController(); fetch('/api/showcase/profile', { signal: c.signal }).then(async (r) => { const body = await r.json(); if (r.ok) setProfile(body.data); else setError('展示页配置缺失，请稍后重试') }).catch(() => setError('展示页配置缺失，请稍后重试')); return () => c.abort() }, [])
-  return { profile, error }
-}
 
-function ShowcaseHome({ profile, error }: { profile: import('../domain/models').ShowcaseProfile; error: string }) {
-  return (
-    <>
-      <HeroSection profile={profile} error={error} />
-      <NowSection statusLine={profile.statusLine} error={error} />
-      <WorksSection />
-      <AboutSection paragraphs={profile.aboutParagraphs} error={error} />
-      <ContactSection email={profile.contactEmail} links={profile.socialLinks} error={error} />
-    </>
-  )
-}
-
-function ShowcaseDetailRoute({ productId }: { productId: string | undefined }) {
-  const params = useParams()
-  const id = productId ?? params.productId
-  if (!id) return <ShowcaseNotFound />
-  return <ShowcaseDetailPage productId={id} />
-}
-
-function ShowcaseNotFound() {
-  return (
-    <section className="showcase-section">
-      <h2>作品未公开或不存在</h2>
-      <p>这个作品可能还没有对外公开，或者链接已失效。</p>
-      <a href="/showcase">返回作品集</a>
-    </section>
-  )
-}
 
 function LegacyApp({ repository: injected, initialEntries }: AppProps) {
   const [repository] = useState(() => {
