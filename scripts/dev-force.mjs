@@ -123,9 +123,31 @@ const main = async () => {
 
   // node_modules/.bin/vite 是 shell 包装脚本，直接执行它即可（它自己会调用 node）。
   const child = spawn(viteBin, ['--port', String(port), '--strictPort'], {
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'inherit'],
     cwd: projectRoot,
     env: { ...process.env, PORT: String(port) },
+  })
+
+  // 解析 Vite 输出的实际访问地址，等服务器就绪后再以独立应用窗口打开。
+  const openAppWindow = (resolvedUrl) => {
+    if (process.env.BROWSER === 'none') return
+    const opener = spawn(process.execPath, [path.join(projectRoot, 'scripts', 'open-app-window.mjs'), resolvedUrl], {
+      stdio: 'inherit',
+      cwd: projectRoot,
+    })
+    opener.unref()
+  }
+  let opened = false
+  child.stdout.on('data', (chunk) => {
+    const text = chunk.toString()
+    process.stdout.write(text)
+    const match = text.match(/Local:\s+(http:\/\/\S+)/)
+    if (match && !opened) {
+      opened = true
+      // 打开应用首页而不是裸根路径。
+      const base = match[1].replace(/\/$/, '')
+      setTimeout(() => openAppWindow(`${base}/products`), 400)
+    }
   })
   child.on('exit', (code) => process.exit(code ?? 0))
   // 转发中断信号，让 Ctrl+C 干净地停掉 dev server。

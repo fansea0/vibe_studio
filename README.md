@@ -39,6 +39,13 @@ SQLite API 与前端由 Vite 插件在同一端口提供，开发地址为 `http
 如果是其他程序占用则不强制终止，自动改用下一个可用端口（控制台会打印实际地址）。
 用 `PORT=6000 npm run dev` 可指定其他端口，`npm run dev:plain` 则完全不做端口处理。
 
+**macOS 上会直接弹出独立应用窗口**（无地址栏、无标签栏，标题栏显示「Vibe Studio」，Dock 有独立图标、可 Cmd+Tab 切换），
+实现方式是用 Chromium 系浏览器的 `--app` 模式，零额外依赖。已存在同名窗口时会直接前置复用，不会重复开。
+可用环境变量调整：
+- `BROWSER=none` —— 不自动打开任何窗口
+- `VIBE_WINDOW=plain` —— 退回普通浏览器标签页（不要独立窗口）
+- `VIBE_BROWSER=/path/to/browser` —— 指定浏览器（自动探测 Chrome / Edge / Chromium / Brave）
+
 ## 作品集对外展示
 
 `/showcase` 是一个对外公开访问的作品集页面，面向潜在合作者、招聘方和好奇的访客，展示当前对外公开的产品。

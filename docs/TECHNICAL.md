@@ -472,6 +472,9 @@ tests/
 
 - 端口 `5173`。`npm run dev` 通过 `scripts/dev-force.mjs` 启动：先释放被本项目 vite 进程占用的端口（SIGTERM→SIGKILL），
   若是其他程序占用则不终止对方，自动改用下一个可用端口。`npm run dev:plain` 跳过这套逻辑。
+- 窗口由 `scripts/dev-force.mjs` 统一管理，`vite.config.ts` 里 `server.open` 固定为 `false`（避免重复弹窗）。
+  macOS 上用 `scripts/open-app-window.mjs` 调 Chromium 的 `--app` 模式开独立应用窗口；
+  端口顺延时打开的是解析出的实际地址。`--user-data-dir` 会导致窗口不显示，因此默认不用独立 profile。
 - 应用使用 `BrowserRouter`，生产部署必须把未知深链 fallback 到 `index.html`：
   - Nginx：`try_files $uri $uri/ /index.html`
   - Vercel/Netlify：启用 SPA rewrite

@@ -13,6 +13,9 @@ export default defineConfig({
     // 端口被占用时不直接失败，自动顺延到下一个可用端口。
     // 想要「强制释放端口再启动」请用 `npm run dev`（scripts/dev-force.mjs 会先释放端口）。
     strictPort: false,
+    // 浏览器窗口由 scripts/dev-force.mjs 统一管理（macOS 上以独立应用窗口打开），
+    // 这里关掉 Vite 自带的 open，避免重复弹窗。
+    open: false,
     watch: { ignored: ['**/data/**/*.sqlite', '**/data/**/*.sqlite-*', '**/data/**/*.db', '**/data/**/*.db-*'] },
   },
   test: {
