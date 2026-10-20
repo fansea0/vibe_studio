@@ -7,6 +7,7 @@ import * as api from '../client/api'
 import { AppShell } from './AppShell'
 import { ProductDetail } from './ProductDetail'
 import { ProductGrid } from './ProductGrid'
+import { WorkCenter } from './WorkCenter'
 import { normalizeProductLifecycle } from './productLifecycle'
 
 interface AppProps { repository?: StudioRepository; initialEntries?: string[] }
@@ -31,8 +32,9 @@ function AppRoutes(_props: AppProps) {
   return <Routes>
     <Route path="/showcase/*" element={<ShowcaseRoutes />} />
     <Route path="/" element={<Navigate to="/products" replace />} />
-    <Route path="/products" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductGrid {...studio.snapshot} {...studio.handlers} /></Workspace>} />
-    <Route path="/products/:productId/:tab?" element={<Workspace products={studio.snapshot.products} error={studio.error}><ProductDetail {...studio.snapshot} {...studio.handlers} comments={studio.comments} events={studio.events} loading={studio.loading} /></Workspace>} />
+    <Route path="/products" element={<Workspace products={studio.snapshot.products} workItems={studio.snapshot.workItems} trashWorkItems={studio.snapshot.trashWorkItems} error={studio.error}><ProductGrid {...studio.snapshot} {...studio.handlers} /></Workspace>} />
+    <Route path="/tasks" element={<Workspace products={studio.snapshot.products} workItems={studio.snapshot.workItems} trashWorkItems={studio.snapshot.trashWorkItems} error={studio.error}><WorkCenter {...studio.snapshot} {...studio.handlers} comments={studio.comments} events={studio.events} /></Workspace>} />
+    <Route path="/products/:productId/:tab?" element={<Workspace products={studio.snapshot.products} workItems={studio.snapshot.workItems} trashWorkItems={studio.snapshot.trashWorkItems} error={studio.error}><ProductDetail {...studio.snapshot} {...studio.handlers} comments={studio.comments} events={studio.events} loading={studio.loading} /></Workspace>} />
     <Route path="*" element={<Navigate to="/products" replace />} />
   </Routes>
 }
@@ -117,9 +119,10 @@ interface RouteProps { snapshot: Snapshot; error: string; onSaveProduct: (p: Pro
 function StudioRoutes({ snapshot, error, ...handlers }: RouteProps) {
   return <Routes>
     <Route path="/" element={<Navigate to="/products" replace />} />
-    <Route path="/products" element={<Workspace products={snapshot.products} error={error}><ProductGrid {...snapshot} {...handlers} /></Workspace>} />
-    <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} error={error}><ProductDetail {...snapshot} {...handlers} /></Workspace>} />
+    <Route path="/products" element={<Workspace products={snapshot.products} workItems={snapshot.workItems} trashWorkItems={snapshot.trashWorkItems} error={error}><ProductGrid {...snapshot} {...handlers} /></Workspace>} />
+    <Route path="/tasks" element={<Workspace products={snapshot.products} workItems={snapshot.workItems} trashWorkItems={snapshot.trashWorkItems} error={error}><WorkCenter {...snapshot} {...handlers} comments={{}} events={{}} /></Workspace>} />
+    <Route path="/products/:productId/:tab?" element={<Workspace products={snapshot.products} workItems={snapshot.workItems} trashWorkItems={snapshot.trashWorkItems} error={error}><ProductDetail {...snapshot} {...handlers} /></Workspace>} />
     <Route path="*" element={<Navigate to="/products" replace />} />
   </Routes>
 }
-function Workspace({ products, error, children }: { products: Product[]; error: string; children: React.ReactNode }) { const { productId } = useParams(); return <AppShell products={products} currentProductId={productId}>{error && <p role="alert" className="feedback error boundary-feedback">{error}</p>}{children}</AppShell> }
+function Workspace({ products, workItems, trashWorkItems, error, children }: { products: Product[]; workItems: WorkItem[]; trashWorkItems: WorkItem[]; error: string; children: React.ReactNode }) { const { productId } = useParams(); return <AppShell products={products} workItems={workItems} trashWorkItems={trashWorkItems} currentProductId={productId}>{error && <p role="alert" className="feedback error boundary-feedback">{error}</p>}{children}</AppShell> }

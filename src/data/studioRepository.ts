@@ -59,6 +59,9 @@ const isIsoDate = (value: unknown): value is string => {
 }
 const isNullableIsoDate = (value: unknown): value is string | null =>
   value === null || isIsoDate(value)
+// 截止日期允许 `YYYY-MM-DD`（SQLite 存储格式）或完整 ISO 串（历史数据）
+const isDueDate = (value: unknown): value is string | null =>
+  value === null || isIsoDate(value) || /^\d{4}-\d\d-\d\d$/.test(value as string)
 const isOneOf = <T extends string>(value: unknown, options: readonly T[]): value is T =>
   isString(value) && (options as readonly string[]).includes(value)
 
@@ -86,7 +89,7 @@ const isWorkItem = (value: unknown): value is WorkItem =>
   isString(value.description) &&
   isString(value.assignee) &&
   isOneOf(value.priority, ['low', 'medium', 'high', 'urgent']) &&
-  isNullableIsoDate(value.dueDate) &&
+  isDueDate(value.dueDate) &&
   isOneOf(value.status, ['todo', 'in_progress', 'done']) &&
   isBoolean(value.isDeleted) &&
   isNullableIsoDate(value.deletedAt) &&

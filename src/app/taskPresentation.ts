@@ -28,7 +28,7 @@ export const trashRemainingDays = (deletedAt: string | null): { label: string; t
 export const dueDateTone = (iso: string | null): 'ok' | 'warn' | 'overdue' | 'none' => {
   if (!iso) return 'none'
   const today = new Date(); today.setHours(0, 0, 0, 0)
-  const due = new Date(`${iso}T00:00:00`)
+  const due = new Date(`${iso.slice(0, 10)}T00:00:00`)
   const diff = Math.round((due.getTime() - today.getTime()) / (24 * 3600 * 1000))
   if (diff < 0) return 'overdue'
   if (diff <= 2) return 'warn'

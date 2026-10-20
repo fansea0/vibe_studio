@@ -21,6 +21,13 @@ export const getLocalDateValue = (date: Date): string => {
 
 export const isoToDateValue = (value: string | null): string => value?.slice(0, 10) ?? ''
 
+/**
+ * 截止日期在 SQLite 里的存储契约是 `YYYY-MM-DD`。
+ * 旧数据可能存的是完整 ISO 串，这里统一裁成日期部分，写入时不再带时区后缀，
+ * 否则服务端 `ensureWork` 的校验会因为格式不符直接拒绝保存。
+ */
+export const dueDateToStorage = (value: string): string => value.slice(0, 10)
+
 export const formatRelativeDays = (iso: string): string => {
   const ms = Date.parse(iso)
   if (Number.isNaN(ms)) return iso

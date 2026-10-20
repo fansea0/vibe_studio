@@ -1,5 +1,6 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { WorkItem } from '../../src/domain/models'
 import { TaskBoard } from '../../src/app/TaskBoard'
@@ -13,24 +14,23 @@ const baseItem = (overrides: Partial<WorkItem> = {}): WorkItem => ({
 const noop = async () => {}
 
 const renderBoard = (props: Partial<Parameters<typeof TaskBoard>[0]> = {}) => render(
-  <TaskBoard
-    productId="p1"
-    items={[]}
-    trashItems={[]}
-    comments={{}}
-    events={{}}
-    onSaveWorkItem={noop}
-    onDeleteWorkItem={noop}
-    onRestoreWorkItem={noop}
-    onPurgeWorkItem={noop}
-    onLoadComments={noop}
-    onLoadEvents={noop}
-    onCreateComment={noop}
-    onOpenDetail={() => {}}
-    onCloseDetail={() => {}}
-    detailItem={null}
-    {...props}
-  />,
+  <MemoryRouter>
+    <TaskBoard
+      productId="p1"
+      items={[]}
+      trashItems={[]}
+      comments={{}}
+      events={{}}
+      onSaveWorkItem={noop}
+      onDeleteWorkItem={noop}
+      onRestoreWorkItem={noop}
+      onPurgeWorkItem={noop}
+      onLoadComments={noop}
+      onLoadEvents={noop}
+      onCreateComment={noop}
+      {...props}
+    />
+  </MemoryRouter>,
 )
 
 describe('TaskBoard', () => {
@@ -67,5 +67,38 @@ describe('TaskBoard', () => {
     })
     await user.click(screen.getByRole('button', { name: 'Bug', pressed: false }))
     expect(screen.getAllByText(/^Bug$/).length).toBeGreaterThan(0)
+  })
+
+  it('keeps finished tasks out of the board but still reachable', async () => {
+    const user = userEvent.setup()
+    renderBoard({
+      items: [
+        baseItem({ title: '未完成的需求' }),
+        baseItem({ id: 'p1-done', title: '已完成的需求', status: 'done' }),
+      ],
+    })
+
+    // 已完成的任务默认折叠，不占看板视觉
+    expect(screen.queryByText('已完成的需求')).not.toBeInTheDocument()
+    const doneRegion = screen.getByRole('region', { name: '已完成 1' })
+    expect(doneRegion).toBeInTheDocument()
+
+    // 展开后可以重新看到
+    await user.click(within(doneRegion).getByRole('button', { name: /已完成/ }))
+    expect(screen.getByText('已完成的需求')).toBeInTheDocument()
+  })
+
+  it('finds finished tasks through search', async () => {
+    const user = userEvent.setup()
+    renderBoard({
+      items: [
+        baseItem({ title: '未完成的需求' }),
+        baseItem({ id: 'p1-done', title: '已完成的需求', status: 'done' }),
+      ],
+    })
+
+    await user.type(screen.getByRole('searchbox', { name: '搜索任务' }), '已完成')
+    expect(screen.getByText('已完成的需求')).toBeInTheDocument()
+    expect(screen.queryByText('未完成的需求')).not.toBeInTheDocument()
   })
 })

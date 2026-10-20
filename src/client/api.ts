@@ -16,6 +16,15 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 const json = (method: string, body: unknown) => ({ method, body: JSON.stringify(body) })
 
+/**
+ * 截止日期的存储契约是 `YYYY-MM-DD`。
+ * 历史数据里可能是完整 ISO 串，直接回传会被服务端校验拒绝，所以统一在写入口裁齐。
+ */
+const normalizeDueDate = (item: WorkItem): WorkItem => ({
+  ...item,
+  dueDate: item.dueDate ? item.dueDate.slice(0, 10) : null,
+})
+
 export async function fetchSnapshot(): Promise<StudioSnapshot> {
   const summaries = await request<Array<{ product: Product }>>('/api/products')
   const products = summaries.map(({ product }) => product)
@@ -39,8 +48,8 @@ export const createProduct = (product: Product) => request<Product>('/api/produc
 export const updateProduct = (product: Product, expectedUpdatedAt: string | null) => request<Product>(`/api/products/${product.id}`, json('PATCH', { ...product, expectedUpdatedAt }))
 export const archiveProduct = (id: string, expectedUpdatedAt: string) => request<Product>(`/api/products/${id}/archive`, json('POST', { expectedUpdatedAt }))
 export const restoreProduct = (id: string, expectedUpdatedAt: string) => request<Product>(`/api/products/${id}/restore`, json('POST', { expectedUpdatedAt }))
-export const createWorkItem = (item: WorkItem) => request<WorkItem>(`/api/products/${item.productId}/work-items`, json('POST', item))
-export const updateWorkItem = (item: WorkItem, expectedUpdatedAt: string) => request<WorkItem>(`/api/work-items/${item.id}`, json('PATCH', { ...item, expectedUpdatedAt }))
+export const createWorkItem = (item: WorkItem) => request<WorkItem>(`/api/products/${item.productId}/work-items`, json('POST', normalizeDueDate(item)))
+export const updateWorkItem = (item: WorkItem, expectedUpdatedAt: string) => request<WorkItem>(`/api/work-items/${item.id}`, json('PATCH', { ...normalizeDueDate(item), expectedUpdatedAt }))
 export const listWorkItemsRaw = (productId: string, opts: { includeDeleted?: boolean; onlyDeleted?: boolean } = {}) => {
   const params = new URLSearchParams()
   if (opts.includeDeleted) params.set('includeDeleted', '1')

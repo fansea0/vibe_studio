@@ -43,7 +43,6 @@ export function ProductDetail({ products, workItems, trashWorkItems, versions, d
   const navigate = useNavigate()
   const [restoreError, setRestoreError] = useState('')
   const [restoreBusy, setRestoreBusy] = useState(false)
-  const [detailItem, setDetailItem] = useState<WorkItem | null>(null)
   const product = products.find(({ id }) => id === productId)
   // 快照仍在加载时不要判定为「产品不存在」，否则直达深链会先闪一下错误页。
   if (!product) return loading
@@ -81,6 +80,7 @@ export function ProductDetail({ products, workItems, trashWorkItems, versions, d
           productId={product.id}
           items={productWorkItems}
           trashItems={productTrash}
+          products={products}
           comments={comments}
           events={events}
           onSaveWorkItem={onSaveWorkItem}
@@ -90,9 +90,6 @@ export function ProductDetail({ products, workItems, trashWorkItems, versions, d
           onLoadComments={onLoadComments}
           onLoadEvents={onLoadEvents}
           onCreateComment={onCreateComment}
-          onOpenDetail={setDetailItem}
-          onCloseDetail={() => setDetailItem(null)}
-          detailItem={detailItem}
         />
       )}
       {activeTab === 'versions' && <VersionList productId={product.id} versions={versions.filter(({ productId: ownerId }) => ownerId === product.id)} currentVersion={metrics.currentVersion} onSaveVersion={onSaveVersion} />}

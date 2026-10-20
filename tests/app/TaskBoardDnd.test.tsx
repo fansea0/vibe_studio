@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -72,9 +72,11 @@ describe('TaskBoard DndContext integration', () => {
       id: 'flora-reminder-timezone',
       status: 'done',
     }))
-    expect(await screen.findByRole('region', { name: '已完成 1' })).toHaveTextContent(
-      'Reminder shifts after timezone change',
-    )
+    const doneColumn = await screen.findByRole('region', { name: '已完成 1' })
+    // 已完成的任务默认折叠，展开后才占视觉
+    expect(doneColumn).not.toHaveTextContent('Reminder shifts after timezone change')
+    await userEvent.click(within(doneColumn).getByRole('button', { name: /已完成/ }))
+    expect(doneColumn).toHaveTextContent('Reminder shifts after timezone change')
     await userEvent.click(screen.getByRole('link', { name: '概览' }))
     expect(screen.getByText('未关闭 Bug').nextElementSibling).toHaveTextContent('0')
   })

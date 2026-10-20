@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { Priority, WorkItem, WorkItemStatus, WorkItemType } from '../domain/models'
 import { Modal } from './Modal'
-import { dateValueToIso, isValidDateValue } from './dateForm'
+import { dueDateToStorage, isValidDateValue } from './dateForm'
 import { mutationErrorMessage } from './mutationError'
 import { priorityLabels, priorities, workItemTypeLabels, workItemTypes } from './workItemPresentation'
 
@@ -40,7 +40,7 @@ export function TaskDialog({ productId, initial, onSave, onClose }: TaskDialogPr
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
     const now = new Date().toISOString()
-    const item: WorkItem = { ...draft, title: draft.title.trim(), dueDate: draft.dueDate ? dateValueToIso(draft.dueDate) : null, createdAt: initial?.createdAt ?? now, updatedAt: now }
+    const item: WorkItem = { ...draft, title: draft.title.trim(), dueDate: draft.dueDate ? dueDateToStorage(draft.dueDate) : null, createdAt: initial?.createdAt ?? now, updatedAt: now }
     setBusy(true)
     try { await onSave(item); onClose() } catch (error) { setErrors({ save: mutationErrorMessage(error, '保存失败，请稍后重试') }) } finally { setBusy(false) }
   }
@@ -57,7 +57,7 @@ export function TaskDialog({ productId, initial, onSave, onClose }: TaskDialogPr
           <label className="field">优先级<select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value as Priority })}>{priorities.map((v) => <option key={v} value={v}>{priorityLabels[v]}</option>)}</select></label>
           <label className="field span-2">负责人<input value={draft.assignee} onChange={(e) => setDraft({ ...draft, assignee: e.target.value })} placeholder="选填" /></label>
           <div className="field span-2"><label htmlFor="task-due">截止日期</label>
-            <input id="task-due" placeholder="YYYY-MM-DD" value={dueInput} onChange={(e) => setDraft({ ...draft, dueDate: e.target.value ? `${e.target.value}T00:00:00.000Z` : null })} aria-invalid={errors.dueDate ? true : undefined} aria-describedby={errors.dueDate ? 'task-due-err' : undefined} />
+            <input id="task-due" placeholder="YYYY-MM-DD" value={dueInput} onChange={(e) => setDraft({ ...draft, dueDate: e.target.value ? e.target.value : null })} aria-invalid={errors.dueDate ? true : undefined} aria-describedby={errors.dueDate ? 'task-due-err' : undefined} />
             {errors.dueDate && <span id="task-due-err" role="alert" className="field-error">{errors.dueDate}</span>}
           </div>
           <div className="field span-2"><label htmlFor="task-desc">描述</label>
